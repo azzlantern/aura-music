@@ -58,9 +58,9 @@ export class SpringSystem {
 
         Object.keys(this.current).forEach(key => {
             const p = this.config[key] || DEFAULT_SPRING;
-            const target = this.target[key];
             const current = this.current[key];
-            const velocity = this.velocity[key];
+            const target = this.target[key] ?? current;
+            const velocity = this.velocity[key] ?? 0;
 
             // Spring Force Calculation (Hooke's Law + Damping)
             // F = -k(x - target) - c(v)
@@ -72,8 +72,12 @@ export class SpringSystem {
             const newVelocity = velocity + acceleration * dt;
             const newPosition = current + newVelocity * dt;
 
-            // Check for rest
-            if (Math.abs(newVelocity) < (p.precision || 0.01) && Math.abs(newPosition - target) < (p.precision || 0.01)) {
+            const precision = p.precision ?? 0.01;
+            const direction = target - current;
+            const wouldOvershoot = direction !== 0 && (target - newPosition) * direction <= 0;
+            const isNearRest = Math.abs(newVelocity) < precision && Math.abs(newPosition - target) < precision;
+
+            if (wouldOvershoot || isNearRest) {
                 this.current[key] = target;
                 this.velocity[key] = 0;
             } else {

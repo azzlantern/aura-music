@@ -1,27 +1,28 @@
-import React, { useRef, useEffect } from 'react';
-import { LyricLine as LyricLineType } from '../types';
+import React, { useRef, useEffect } from "react";
+import { LyricLine as LyricLineType } from "../types";
 
 interface LyricLineProps {
-    index: number;
-    line: LyricLineType;
-    isActive: boolean;
-    isUserScrolling: boolean;
-    distance: number;
-    onLineClick: (time: number) => void;
-    audioRef: React.RefObject<HTMLAudioElement>;
-    setLineRef: (el: HTMLDivElement | null) => void;
+  index: number;
+  line: LyricLineType;
+  isActive: boolean;
+  isUserScrolling: boolean;
+  distance: number;
+  onLineClick: (time: number) => void;
+  audioRef: React.RefObject<HTMLAudioElement>;
+  setLineRef: (el: HTMLDivElement | null) => void;
 }
 
-const LyricLine = React.memo(({ 
+const LyricLine = React.memo(
+  ({
     index,
-    line, 
-    isActive, 
-    distance, 
-    isUserScrolling, 
-    onLineClick, 
+    line,
+    isActive,
+    distance,
+    isUserScrolling,
+    onLineClick,
     audioRef,
-    setLineRef
-}: LyricLineProps) => {
+    setLineRef,
+  }: LyricLineProps) => {
     const wordsRef = useRef<(HTMLSpanElement | null)[]>([]);
     const rafRef = useRef<number>(0);
 
@@ -32,81 +33,79 @@ const LyricLine = React.memo(({
     // Animation Loop (Highlights & Rise)
     // ------------------------------------------------------------
     useEffect(() => {
-        const updateWordStyles = () => {
-            if (!audioRef.current) return;
-            const currentTime = audioRef.current.currentTime;
-            
-            // Mode A: Word-by-word lyrics
-            if (line.words && line.words.length > 0) {
-                line.words.forEach((word, i) => {
-                    const span = wordsRef.current[i];
-                    if (!span) return;
+      const updateWordStyles = () => {
+        if (!audioRef.current) return;
+        const currentTime = audioRef.current.currentTime;
 
-                    const isCurrent = currentTime >= word.startTime && currentTime <= word.endTime;
-                    const isPast = currentTime > word.endTime;
-                    
-                    // Reset classes first to ensure clean state transitions
-                    if (isCurrent) {
-                        const duration = word.endTime - word.startTime;
-                        // User Condition: length < 7 AND duration >= 1s
-                        if (word.text.length < 7 && duration >= 1.0) {
-                            span.className = 'word-base word-active mr-2.5 whitespace-pre';
-                        } else {
-                            span.className = 'word-base word-current mr-2.5 whitespace-pre';
-                        }
-                    } else if (isPast) {
-                        span.className = 'word-base word-past mr-2.5 whitespace-pre';
-                    } else {
-                        span.className = 'word-base word-future mr-2.5 whitespace-pre';
-                    }
-                });
+        // Mode A: Word-by-word lyrics
+        if (line.words && line.words.length > 0) {
+          line.words.forEach((word, i) => {
+            const span = wordsRef.current[i];
+            if (!span) return;
+
+            const isCurrent =
+              currentTime >= word.startTime && currentTime <= word.endTime;
+            const isPast = currentTime > word.endTime;
+
+            // Reset classes first to ensure clean state transitions
+            if (isCurrent) {
+              const duration = word.endTime - word.startTime;
+              // User Condition: length < 7 AND duration >= 1s
+              if (word.text.length < 7 && duration >= 1.0) {
+                span.className = "word-base word-active mr-2.5 whitespace-pre";
+              } else {
+                span.className = "word-base word-current mr-2.5 whitespace-pre";
+              }
+            } else if (isPast) {
+              span.className = "word-base word-past mr-2.5 whitespace-pre";
+            } else {
+              span.className = "word-base word-future mr-2.5 whitespace-pre";
             }
-        };
-
-        if (isActive) {
-             const loop = () => {
-                 updateWordStyles();
-                 rafRef.current = requestAnimationFrame(loop);
-             };
-             rafRef.current = requestAnimationFrame(loop);
-        } else {
-             // If not active, run once to ensure words settle into correct state
-             updateWordStyles();
+          });
         }
+      };
 
-        return () => cancelAnimationFrame(rafRef.current);
+      if (isActive) {
+        const loop = () => {
+          updateWordStyles();
+          rafRef.current = requestAnimationFrame(loop);
+        };
+        rafRef.current = requestAnimationFrame(loop);
+      } else {
+        // If not active, run once to ensure words settle into correct state
+        updateWordStyles();
+      }
+
+      return () => cancelAnimationFrame(rafRef.current);
     }, [isActive, line, audioRef]);
 
     // ------------------------------------------------------------
     // Render Logic
     // ------------------------------------------------------------
-    
-    const isPlainLineActive = isActive && (!line.words || line.words.length === 0);
 
     return (
-        <div 
-            ref={setLineRef}
-            onClick={() => onLineClick(line.time)}
-            className={`
+      <div
+        ref={setLineRef}
+        onClick={() => onLineClick(line.time)}
+        className={`
                 py-4 px-6 md:px-8 rounded-2xl cursor-pointer w-fit max-w-5xl
                 origin-left
                 hover:bg-white/10
-                ${isActive ? 'line-active' : 'line-inactive'}
-                ${isPlainLineActive ? 'plain-active' : ''}
+                ${isActive ? "line-active" : "line-inactive"}
             `}
-            style={{
-                // Transforms (Scale/Translate) and Opacity are managed by LyricsView's loop
-                // using matrix3d to eliminate jitter and conflict.
-                willChange: 'transform, opacity, filter',
-                backfaceVisibility: 'hidden',
-                WebkitBackfaceVisibility: 'hidden'
-            }}
-        >
-            {/* Styles for word states */}
-            <style>{`
+        style={{
+          // Transforms (Scale/Translate) and Opacity are managed by LyricsView's loop
+          // using matrix3d to eliminate jitter and conflict.
+          willChange: "transform, opacity, filter",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+        }}
+      >
+        {/* Styles for word states */}
+        <style>{`
                 .word-base {
                     display: inline-block;
-                    transition: all 1.5s cubic-bezier(0.2, 0, 0, 1); 
+                    transition: all 1.5s cubic-bezier(0.2, 0, 0, 1);
                     will-change: transform, text-shadow, opacity, color;
                 }
 
@@ -119,19 +118,19 @@ const LyricLine = React.memo(({
                 }
 
                 .line-active .word-current {
-                    transform: translateY(-4px); 
+                    transform: translateY(-4px);
                     text-shadow: 0 0 10px rgba(255,255,255,0.5);
                     opacity: 1;
                     color: #fff;
                 }
-                
+
                 .line-active .word-past {
                     transform: translateY(-5px);
                     text-shadow: 0 0 10px rgba(255,255,255,0.3);
                     opacity: 1;
                     color: #fff;
                 }
-                
+
                 .line-active .word-future {
                     transform: translateY(0);
                     text-shadow: none;
@@ -149,36 +148,35 @@ const LyricLine = React.memo(({
                     color: inherit;
                 }
 
-                .plain-active {
-                     text-shadow: 0 0 30px rgba(255,255,255,0.6);
-                     transition: text-shadow 1.5s ease;
-                }
             `}</style>
 
-            <div className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-white">
-                {line.words && line.words.length > 0 ? (
-                    line.words.map((word, i) => (
-                        <span 
-                            key={i}
-                            ref={el => { wordsRef.current[i] = el; }}
-                            className="word-base word-future mr-2.5 whitespace-pre"
-                        >
-                            {word.text}
-                        </span>
-                    ))
-                ) : (
-                    <span className="transition-all duration-[1500ms]">
-                        {line.text}
-                    </span>
-                )}
-            </div>
-            {line.translation && (
-                <div className="mt-2 text-lg md:text-xl font-medium text-white/60">
-                    {line.translation}
-                </div>
-            )}
+        <div className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-white">
+          {line.words && line.words.length > 0 ? (
+            line.words.map((word, i) => (
+              <span
+                key={i}
+                ref={(el) => {
+                  wordsRef.current[i] = el;
+                }}
+                className="word-base word-future mr-2.5 whitespace-pre"
+              >
+                {word.text}
+              </span>
+            ))
+          ) : (
+            <span className="transition-all whitespace-pre-wrap break-words duration-[500ms] mr-2.5 tracking-wide">
+              {line.text}
+            </span>
+          )}
         </div>
+        {line.translation && (
+          <div className="mt-2 text-lg md:text-xl font-medium text-white/60">
+            {line.translation}
+          </div>
+        )}
+      </div>
     );
-});
+  },
+);
 
 export default LyricLine;

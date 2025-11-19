@@ -21,28 +21,33 @@ export const shuffleArray = <T>(array: T[]): T[] => {
 };
 
 // Helper to request via CORS proxy (api.allorigins.win is reliable for GET requests)
+// 先尝试直接请求，跨域失败时再使用代理
 export const fetchViaProxy = async (targetUrl: string): Promise<any> => {
-    let text: string
+    let text: string;
+
+    // 1. 先尝试直接请求
     try {
-        // Wrap the target URL with AllOrigins or cors-anywhere to bypass CORS
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-        const response = await fetch(proxyUrl);
+        const response = await fetch(targetUrl);
         if (!response.ok) {
-             throw new Error("Direct fetch failed");
+            throw new Error(`Direct fetch failed with status: ${response.status}`);
         }
-        text = await response.text()
-        return JSON.parse(text)
-    } catch (error) {
+        text = await response.text();
+        return JSON.parse(text);
+    } catch (directError) {
+        // 2. 直接请求失败（可能是 CORS 错误），使用代理
+        console.warn("Direct fetch failed (likely CORS), trying proxy:", directError);
+
         try {
-            // Fallback to another proxy if needed, or just log
-            console.warn("Primary proxy failed, trying direct (might fail CORS)", error);
-            const response = await fetch(targetUrl);
-            if(!response.ok) throw new Error("Direct failed");
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) {
+                throw new Error(`Proxy fetch failed with status: ${response.status}`);
+            }
             text = await response.text();
             return JSON.parse(text);
-        } catch (e2) {
-            console.error("API Request Error:", e2, targetUrl);
-            throw e2;
+        } catch (proxyError) {
+            console.error("Both direct and proxy requests failed:", proxyError, targetUrl);
+            throw proxyError;
         }
     }
 };

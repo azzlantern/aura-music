@@ -42,6 +42,11 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
   useEffect(() => {
     if (isOpen) {
       setVisible(true);
+      setScrollTop(0); // 重置滚动位置，修复重新打开后显示不出内容的问题
+      // 同时重置实际滚动容器的位置
+      if (listRef.current) {
+        listRef.current.scrollTop = 0;
+      }
     } else {
       setIsEditing(false); // Reset mode on close
       setSelectedIds(new Set());
