@@ -1,6 +1,10 @@
 import React, { useRef, useEffect } from "react";
 import { LyricLine as LyricLineType } from "../types";
 
+const containsNonAscii = (text: string) => /[^\x00-\x7f]/.test(text);
+const spacingClassForWord = (text: string) =>
+  containsNonAscii(text) ? "mr-1.5" : "mr-2.5";
+
 interface LyricLineProps {
   index: number;
   line: LyricLineType;
@@ -43,6 +47,10 @@ const LyricLine = React.memo(
             const span = wordsRef.current[i];
             if (!span) return;
 
+            const spacing =
+              span.dataset.spacing || spacingClassForWord(word.text);
+            const baseClass = `word-base ${spacing} whitespace-pre`;
+
             const isCurrent =
               currentTime >= word.startTime && currentTime <= word.endTime;
             const isPast = currentTime > word.endTime;
@@ -52,15 +60,17 @@ const LyricLine = React.memo(
               const duration = word.endTime - word.startTime;
               // User Condition: length < 7 AND duration >= 1s
               if (word.text.length < 7 && duration >= 1.0) {
-                span.className = "word-base word-active mr-2.5 whitespace-pre";
+                span.className = `${baseClass} word-active`;
               } else {
-                span.className = "word-base word-current mr-2.5 whitespace-pre";
+                span.className = `${baseClass} word-current`;
               }
             } else if (isPast) {
-              span.className = "word-base word-past mr-2.5 whitespace-pre";
+              span.className = `${baseClass} word-past`;
             } else {
-              span.className = "word-base word-future mr-2.5 whitespace-pre";
+              span.className = `${baseClass} word-future`;
             }
+
+            span.dataset.spacing = spacing;
           });
         }
       };
@@ -152,17 +162,21 @@ const LyricLine = React.memo(
 
         <div className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-white">
           {line.words && line.words.length > 0 ? (
-            line.words.map((word, i) => (
-              <span
-                key={i}
-                ref={(el) => {
-                  wordsRef.current[i] = el;
-                }}
-                className="word-base word-future mr-2.5 whitespace-pre"
-              >
-                {word.text}
-              </span>
-            ))
+            line.words.map((word, i) => {
+              const spacingClass = spacingClassForWord(word.text);
+              return (
+                <span
+                  key={i}
+                  ref={(el) => {
+                    wordsRef.current[i] = el;
+                  }}
+                  data-spacing={spacingClass}
+                  className={`word-base word-future ${spacingClass} whitespace-pre`}
+                >
+                  {word.text}
+                </span>
+              );
+            })
           ) : (
             <span className="transition-all whitespace-pre-wrap break-words duration-[500ms] mr-2.5 tracking-wide">
               {line.text}
