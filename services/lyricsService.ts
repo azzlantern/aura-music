@@ -33,6 +33,71 @@ const metadataKeywordRegex = new RegExp(
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/;
 
+interface NeteaseApiArtist {
+  name?: string;
+}
+
+interface NeteaseApiAlbum {
+  name?: string;
+  picUrl?: string;
+}
+
+interface NeteaseApiSong {
+  id: number;
+  name?: string;
+  ar?: NeteaseApiArtist[];
+  al?: NeteaseApiAlbum;
+  dt?: number;
+}
+
+interface NeteaseSearchResponse {
+  result?: {
+    songs?: NeteaseApiSong[];
+  };
+}
+
+interface NeteasePlaylistResponse {
+  songs?: NeteaseApiSong[];
+}
+
+interface NeteaseSongDetailResponse {
+  code?: number;
+  songs?: NeteaseApiSong[];
+}
+
+export interface NeteaseTrackInfo {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  coverUrl?: string;
+  duration?: number;
+  isNetease: true;
+  neteaseId: string;
+}
+
+type SearchOptions = {
+  limit?: number;
+  offset?: number;
+};
+
+const formatArtists = (artists?: NeteaseApiArtist[]) =>
+  (artists ?? [])
+    .map((artist) => artist.name?.trim())
+    .filter(Boolean)
+    .join("/") || "";
+
+const mapNeteaseSongToTrack = (song: NeteaseApiSong): NeteaseTrackInfo => ({
+  id: song.id.toString(),
+  title: song.name?.trim() ?? "",
+  artist: formatArtists(song.ar),
+  album: song.al?.name?.trim() ?? "",
+  coverUrl: song.al?.picUrl,
+  duration: song.dt,
+  isNetease: true,
+  neteaseId: song.id.toString(),
+});
+
 const isMetadataTimestampLine = (line: string): boolean => {
   const trimmed = line.trim();
   const match = trimmed.match(TIMESTAMP_REGEX);
@@ -104,69 +169,55 @@ export const getNeteaseAudioUrl = (id: string) => {
 // Implements the search logic from the user provided code snippet
 export const searchNetEase = async (
   keyword: string,
-  limit: number = 20,
-): Promise<any[]> => {
-  const searchApiUrl = `${NETEASE_SEARCH_API}?keywords=${encodeURIComponent(keyword)}&limit=${limit}`;
+  options: SearchOptions = {},
+): Promise<NeteaseTrackInfo[]> => {
+  const { limit = 20, offset = 0 } = options;
+  const searchApiUrl = `${NETEASE_SEARCH_API}?keywords=${encodeURIComponent(
+    keyword,
+  )}&limit=${limit}&offset=${offset}`;
 
   try {
-    // Use proxy since we are in browser
-    const parsedSearchApiResponse = await fetchViaProxy(searchApiUrl);
-    const searchData = parsedSearchApiResponse.result;
+    const parsedSearchApiResponse = (await fetchViaProxy(
+      searchApiUrl,
+    )) as NeteaseSearchResponse;
+    const songs = parsedSearchApiResponse.result?.songs ?? [];
 
-    if (!searchData || !searchData.songs || searchData.songs.length === 0) {
+    if (songs.length === 0) {
       return [];
     }
 
-    return searchData.songs.map((song: any) => {
-      return {
-        id: song.id.toString(),
-        title: song.name,
-        artist: song.ar.map((artist: any) => artist.name).join("/"),
-        album: song.al.name,
-        coverUrl: song.al.picUrl, // Use if available, though standard search sometimes omits high res
-        duration: song.dt,
-        isNetease: true,
-        neteaseId: song.id.toString(),
-      };
-    });
+    return songs.map(mapNeteaseSongToTrack);
   } catch (error) {
     console.error("NetEase search error", error);
     return [];
   }
 };
 
-export const fetchNeteasePlaylist = async (playlistId: string) => {
+export const fetchNeteasePlaylist = async (
+  playlistId: string,
+): Promise<NeteaseTrackInfo[]> => {
   try {
     // 使用網易雲音樂 API 獲取歌單所有歌曲
     // 由於接口限制，需要分頁獲取，每次獲取 50 首
-    const allTracks = [];
+    const allTracks: NeteaseTrackInfo[] = [];
     const limit = 50;
     let offset = 0;
     let shouldContinue = true;
 
     while (shouldContinue) {
       const url = `${NETEASECLOUD_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
-      const data = await fetchViaProxy(url);
-
-      if (!data || !data.songs || data.songs.length === 0) {
+      const data = (await fetchViaProxy(url)) as NeteasePlaylistResponse;
+      const songs = data.songs ?? [];
+      if (songs.length === 0) {
         break;
       }
 
-      const tracks = data.songs.map((track: any) => ({
-        id: track.id.toString(),
-        title: track.name,
-        artist: track.ar?.map((a: any) => a.name).join("/") || "",
-        album: track.al?.name || "",
-        coverUrl: track.al?.picUrl || "",
-        duration: track.dt,
-        isNetease: true,
-        neteaseId: track.id.toString(),
-      }));
+      const tracks = songs.map(mapNeteaseSongToTrack);
 
       allTracks.push(...tracks);
 
-      // Continue fetching if we got 100 or more tracks
-      if (data.songs.length < limit) {
+      // Continue fetching if the current page was full
+      if (songs.length < limit) {
         shouldContinue = false;
       } else {
         offset += limit;
@@ -180,21 +231,17 @@ export const fetchNeteasePlaylist = async (playlistId: string) => {
   }
 };
 
-export const fetchNeteaseSong = async (songId: string) => {
+export const fetchNeteaseSong = async (
+  songId: string,
+): Promise<NeteaseTrackInfo | null> => {
   try {
     const url = `${NETEASECLOUD_API_BASE}/song/detail?ids=${songId}`;
-    const data = await fetchViaProxy(url);
-    if (data.code === 200 && data.songs && data.songs.length > 0) {
-      const track = data.songs[0];
-      return {
-        id: track.id.toString(),
-        title: track.name,
-        artist: track.ar.map((a: any) => a.name).join("/"),
-        album: track.al.name,
-        coverUrl: track.al.picUrl,
-        isNetease: true,
-        neteaseId: track.id.toString(),
-      };
+    const data = (await fetchViaProxy(
+      url,
+    )) as NeteaseSongDetailResponse;
+    const track = data.songs?.[0];
+    if (data.code === 200 && track) {
+      return mapNeteaseSongToTrack(track);
     }
     return null;
   } catch (e) {
@@ -209,7 +256,7 @@ export const searchAndMatchLyrics = async (
   artist: string,
 ): Promise<{ lrc: string; tLrc?: string; metadata: string[] } | null> => {
   try {
-    const songs = await searchNetEase(`${title} ${artist}`, 5);
+    const songs = await searchNetEase(`${title} ${artist}`, { limit: 5 });
 
     if (songs.length === 0) {
       console.warn("No songs found on Cloud");

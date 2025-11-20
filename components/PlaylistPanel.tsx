@@ -4,6 +4,32 @@ import { createPortal } from 'react-dom';
 import { Song } from '../types';
 import { CheckIcon, LinkIcon, PlusIcon, QueueIcon } from './Icons';
 
+const IOS_SCROLLBAR_STYLES = `
+  .playlist-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.65) rgba(255, 255, 255, 0.02);
+  }
+  .playlist-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+  .playlist-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(28px);
+  }
+  .playlist-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.5));
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(24px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  }
+  .playlist-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.72));
+  }
+`;
+
 interface PlaylistPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -130,7 +156,8 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
   return (
     <>
-    <div 
+      <style>{IOS_SCROLLBAR_STYLES}</style>
+      <div 
         ref={panelRef}
         className={`
             absolute bottom-24 -right-8 z-50
@@ -188,7 +215,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         <div 
             ref={listRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto no-scrollbar px-2 py-2 relative"
+        className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-2 relative"
         >
             {queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-white/30 space-y-2">
