@@ -15,6 +15,7 @@ import {
   fetchLyricsById,
 } from "./services/lyricsService";
 import FluidBackground from "./components/FluidBackground";
+import MobileFluidBackground from "./components/MobileFluidBackground";
 import Controls from "./components/Controls";
 import LyricsView from "./components/LyricsView";
 import GeminiButton from "./components/GeminiButton";
@@ -581,11 +582,19 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden">
-      <FluidBackground
-        colors={currentSong?.colors || []}
-        coverUrl={currentSong?.coverUrl}
-        isPlaying={playState === PlayState.PLAYING}
-      />
+      {isMobileLayout ? (
+        <MobileFluidBackground
+          colors={currentSong?.colors || []}
+          coverUrl={currentSong?.coverUrl}
+          isPlaying={playState === PlayState.PLAYING}
+        />
+      ) : (
+        <FluidBackground
+          colors={currentSong?.colors || []}
+          coverUrl={currentSong?.coverUrl}
+          isPlaying={playState === PlayState.PLAYING}
+        />
+      )}
 
       <audio
         ref={audioRef}

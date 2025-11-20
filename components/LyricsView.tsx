@@ -40,6 +40,8 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     lastInteractionTime: 0,
     touchStartY: 0,
     touchLastY: 0,
+    touchStartX: 0,
+    touchLastX: 0,
     touchVelocity: 0,
     visualState: false,
   });
@@ -220,8 +222,12 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   const handleTouchStart = (e: React.TouchEvent) => {
     scrollState.current.isDragging = true;
     scrollState.current.lastInteractionTime = performance.now();
-    scrollState.current.touchStartY = e.touches[0].clientY;
-    scrollState.current.touchLastY = e.touches[0].clientY;
+    const touchY = e.touches[0].clientY;
+    const touchX = e.touches[0].clientX;
+    scrollState.current.touchStartY = touchY;
+    scrollState.current.touchLastY = touchY;
+    scrollState.current.touchStartX = touchX;
+    scrollState.current.touchLastX = touchX;
     scrollState.current.touchVelocity = 0;
 
     // Reset spring to current position to take control
@@ -230,9 +236,18 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    const y = e.touches[0].clientY;
-    const dy = scrollState.current.touchLastY - y;
-    scrollState.current.touchLastY = y;
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const dy = scrollState.current.touchLastY - currentY;
+    const absDx = Math.abs(currentX - scrollState.current.touchLastX);
+    const absDy = Math.abs(dy);
+
+    if (absDy > absDx) {
+      e.stopPropagation();
+    }
+
+    scrollState.current.touchLastY = currentY;
+    scrollState.current.touchLastX = currentX;
 
     const newY = springSystem.current.getCurrent("y") + dy;
     springSystem.current.setValue("y", newY);

@@ -1,18 +1,24 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from "react";
 
 interface FluidBackgroundProps {
   colors: string[];
   coverUrl?: string;
   isPlaying: boolean;
+  targetFps?: number;
 }
 
-const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) => {
+const FluidBackground: React.FC<FluidBackgroundProps> = ({
+  colors,
+  isPlaying,
+  targetFps = 60,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
-  
+
   // Time tracking for pause/resume
   const timeRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
+  const lastRenderTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
 
   // Sync ref to avoid effect re-trigger
@@ -22,20 +28,20 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
 
   // Fallback colors
   const defaultColors = [
-    'rgb(60, 20, 80)',
-    'rgb(100, 40, 60)',
-    'rgb(20, 20, 40)',
-    'rgb(40, 40, 90)'
+    "rgb(60, 20, 80)",
+    "rgb(100, 40, 60)",
+    "rgb(20, 20, 40)",
+    "rgb(40, 40, 90)",
   ];
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    const gl = canvas.getContext('webgl');
+
+    const gl = canvas.getContext("webgl");
     if (!gl) {
-        console.error("WebGL not supported");
-        return;
+      console.error("WebGL not supported");
+      return;
     }
 
     // --------------------------------------------------------
@@ -51,13 +57,13 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
 
     const fragmentShaderSource = `
       precision highp float;
-      
+
       uniform vec2 uResolution;
       uniform float uTime;
       uniform sampler2D uTexture; // Holds the color palette gradient
 
       // Random function
-      float rand(vec2 n) { 
+      float rand(vec2 n) {
           return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
       }
 
@@ -81,11 +87,11 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
 
           // Octaves with standard decay for softer details
           f += 0.500000 * noise( p + uTime * 0.5 ); p = mtx * p * 2.02;
-          f += 0.250000 * noise( p ); p = mtx * p * 2.03;
-          f += 0.125000 * noise( p ); p = mtx * p * 2.01;
-          f += 0.062500 * noise( p ); p = mtx * p * 2.04;
-          
-          return f / 0.9375;
+          f += 0.312500 * noise( p ); p = mtx * p * 2.03;
+          f += 0.250000 * noise( p ); p = mtx * p * 2.01;
+          //f += 0.062500 * noise( p ); p = mtx * p * 2.04;
+
+          return f / 0.96875;
       }
 
       // Domain Warping Pattern
@@ -98,15 +104,15 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
           vec2 uv = gl_FragCoord.xy / uResolution.xy;
           // Correct aspect ratio
           uv.x *= uResolution.x / uResolution.y;
-          
+
           // Zoom out slightly for larger, softer shapes
-          uv *= 0.6;
+          uv *= 0.4;
 
           float shade = pattern(uv);
-          
+
           // Smoothstep to remove harsh extremes
           shade = smoothstep(0.0, 1.0, shade);
-          
+
           // Map the noise value (shade) to our dynamic color gradient texture
           // clamp ensures we don't wrap around the texture edge
           vec4 color = texture2D(uTexture, vec2(clamp(shade, 0.001, 0.999), 0.5));
@@ -118,8 +124,12 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
     // --------------------------------------------------------
     // 2. COMPILE SHADERS
     // --------------------------------------------------------
-    
-    const createShader = (gl: WebGLRenderingContext, type: number, source: string) => {
+
+    const createShader = (
+      gl: WebGLRenderingContext,
+      type: number,
+      source: string,
+    ) => {
       const shader = gl.createShader(type);
       if (!shader) return null;
       gl.shaderSource(shader, source);
@@ -133,7 +143,11 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
     };
 
     const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    const fragmentShader = createShader(
+      gl,
+      gl.FRAGMENT_SHADER,
+      fragmentShaderSource,
+    );
 
     if (!vertexShader || !fragmentShader) return;
 
@@ -151,12 +165,7 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     const positions = [
-      -1.0, -1.0,
-       1.0, -1.0,
-      -1.0,  1.0,
-      -1.0,  1.0,
-       1.0, -1.0,
-       1.0,  1.0,
+      -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0,
     ];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
@@ -170,34 +179,41 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
 
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    
+
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     const updateTexture = () => {
-        const activeColors = (colors && colors.length > 0) ? colors : defaultColors;
-        const width = 512;
-        const height = 1;
+      const activeColors = colors && colors.length > 0 ? colors : defaultColors;
+      const width = 512;
+      const height = 1;
 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = width;
-        tempCanvas.height = height;
-        const ctx = tempCanvas.getContext('2d');
-        
-        if (ctx) {
-            const grad = ctx.createLinearGradient(0, 0, width, 0);
-            // Distribute colors evenly
-            activeColors.forEach((c, i) => {
-                grad.addColorStop(i / Math.max(1, activeColors.length - 1), c);
-            });
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, width, height);
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const ctx = tempCanvas.getContext("2d");
 
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tempCanvas);
-        }
+      if (ctx) {
+        const grad = ctx.createLinearGradient(0, 0, width, 0);
+        // Distribute colors evenly
+        activeColors.forEach((c, i) => {
+          grad.addColorStop(i / Math.max(1, activeColors.length - 1), c);
+        });
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          tempCanvas,
+        );
+      }
     };
 
     updateTexture();
@@ -206,30 +222,47 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
     // 5. RENDER LOOP
     // --------------------------------------------------------
 
-    const resolutionUniformLocation = gl.getUniformLocation(program, "uResolution");
+    const resolutionUniformLocation = gl.getUniformLocation(
+      program,
+      "uResolution",
+    );
     const timeUniformLocation = gl.getUniformLocation(program, "uTime");
     const textureUniformLocation = gl.getUniformLocation(program, "uTexture");
 
     const render = (now: number) => {
-      if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-         canvas.width = canvas.clientWidth;
-         canvas.height = canvas.clientHeight;
-         gl.viewport(0, 0, canvas.width, canvas.height);
+      // Frame rate limiting
+      const frameInterval = 1000 / targetFps;
+      const elapsed = now - lastRenderTimeRef.current;
+
+      if (elapsed < frameInterval) {
+        animationRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      lastRenderTimeRef.current = now - (elapsed % frameInterval);
+
+      if (
+        canvas.width !== canvas.clientWidth ||
+        canvas.height !== canvas.clientHeight
+      ) {
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
       }
 
       gl.useProgram(program);
       gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
-      
+
       // Delta time calculation for smooth pause/resume
       const dt = now - lastFrameTimeRef.current;
       lastFrameTimeRef.current = now;
 
       if (isPlayingRef.current) {
-         timeRef.current += dt;
+        timeRef.current += dt;
       }
-      
+
       // Speed factor: 0.0005
-      gl.uniform1f(timeUniformLocation, timeRef.current * 0.0005); 
+      gl.uniform1f(timeUniformLocation, timeRef.current * 0.0005);
       gl.uniform1i(textureUniformLocation, 0);
 
       gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -243,20 +276,21 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({ colors, isPlaying }) 
     return () => {
       cancelAnimationFrame(animationRef.current);
     };
-  }, [colors]);
+  }, [colors, targetFps]);
 
   return (
     <>
-        <canvas 
-            ref={canvasRef} 
-            className="fixed inset-0 w-full h-full bg-black"
-        />
-        {/* Subtle noise overlay for texture */}
-        <div className="fixed inset-0 w-full h-full pointer-events-none opacity-[0.03] mix-blend-overlay"
-             style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
-             }}
-        ></div>
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 w-full h-full bg-black"
+      />
+      {/* Subtle noise overlay for texture */}
+      <div
+        className="fixed inset-0 w-full h-full pointer-events-none opacity-[0.03] mix-blend-overlay"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+        }}
+      ></div>
     </>
   );
 };

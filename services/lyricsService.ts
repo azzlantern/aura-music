@@ -65,7 +65,10 @@ const parseJsonMetadata = (line: string) => {
   try {
     const json = JSON.parse(line.trim());
     if (json.c && Array.isArray(json.c)) {
-      return json.c.map((item: any) => item.tx || "").join("").trim();
+      return json.c
+        .map((item: any) => item.tx || "")
+        .join("")
+        .trim();
     }
   } catch {
     // ignore
@@ -179,16 +182,16 @@ export const fetchNeteasePlaylist = async (playlistId: string) => {
 
 export const fetchNeteaseSong = async (songId: string) => {
   try {
-    const url = `${NETEASE_API_BASE}/song/detail?id=${songId}&ids=[${songId}]`;
+    const url = `${NETEASECLOUD_API_BASE}/song/detail?ids=${songId}`;
     const data = await fetchViaProxy(url);
     if (data.code === 200 && data.songs && data.songs.length > 0) {
       const track = data.songs[0];
       return {
         id: track.id.toString(),
         title: track.name,
-        artist: track.artists.map((a: any) => a.name).join("/"),
-        album: track.album.name,
-        coverUrl: track.album.picUrl,
+        artist: track.ar.map((a: any) => a.name).join("/"),
+        album: track.al.name,
+        coverUrl: track.al.picUrl,
         isNetease: true,
         neteaseId: track.id.toString(),
       };
@@ -241,7 +244,8 @@ export const fetchLyricsById = async (
     if (!originalLrc) return null;
 
     // Extract metadata from original lyrics
-    const { clean: cleanOriginal, metadata: originalMetadata } = extractMetadataLines(originalLrc);
+    const { clean: cleanOriginal, metadata: originalMetadata } =
+      extractMetadataLines(originalLrc);
 
     // Extract metadata from translation if available
     let cleanTranslation: string | undefined;

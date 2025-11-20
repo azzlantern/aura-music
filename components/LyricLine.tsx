@@ -99,7 +99,7 @@ const LyricLine = React.memo(
     // ------------------------------------------------------------
 
     const textSizeClass = isMobile
-      ? "text-2xl md:text-3xl lg:text-4xl"
+      ? "text-3xl md:text-3xl lg:text-4xl"
       : "text-3xl md:text-4xl lg:text-5xl";
 
     return (
@@ -130,7 +130,7 @@ const LyricLine = React.memo(
 
                 /* ACTIVE LINE STYLES */
                 .line-active .word-active {
-                    transform: translateY(-8px);
+                    transform: translateY(-4px);
                     text-shadow: 0 0 20px rgba(255,255,255,0.9), 0 0 40px rgba(255,255,255,0.5);
                     opacity: 1;
                     color: #fff;
@@ -144,7 +144,7 @@ const LyricLine = React.memo(
                 }
 
                 .line-active .word-past {
-                    transform: translateY(-5px);
+                    transform: translateY(-4px);
                     text-shadow: 0 0 10px rgba(255,255,255,0.3);
                     opacity: 1;
                     color: #fff;
