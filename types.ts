@@ -20,6 +20,7 @@ export interface Song {
   coverUrl?: string;
   lyrics?: LyricLine[];
   colors?: string[]; // Array of dominant colors
+  needsLyricsMatch?: boolean; // Flag indicating song needs cloud lyrics matching
   // Netease specific fields
   isNetease?: boolean;
   neteaseId?: string;

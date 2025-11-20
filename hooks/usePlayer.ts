@@ -172,6 +172,19 @@ export const usePlayer = ({
     [currentIndex, playMode, reorderForShuffle],
   );
 
+  const mergeLyricsWithMetadata = useCallback(
+    (result: { lrc: string; tLrc?: string; metadata: string[] }) => {
+      const parsed = parseLrc(result.lrc, result.tLrc);
+      const metadataCount = result.metadata.length;
+      const metadataLines = result.metadata.map((text, idx) => ({
+        time: -0.01 * (metadataCount - idx),
+        text,
+      }));
+      return [...metadataLines, ...parsed].sort((a, b) => a.time - b.time);
+    },
+    [],
+  );
+
   const loadLyricsFile = useCallback(
     (file?: File) => {
       if (!file || !currentSong) return;
@@ -189,41 +202,41 @@ export const usePlayer = ({
     [currentSong, updateSongInQueue],
   );
 
-  const mergeLyricsWithMetadata = useCallback(
-    (result: { lrc: string; tLrc?: string; metadata: string[] }) => {
-      const parsed = parseLrc(result.lrc, result.tLrc);
-      const metadataCount = result.metadata.length;
-      const metadataLines = result.metadata.map((text, idx) => ({
-        time: -0.01 * (metadataCount - idx),
-        text,
-      }));
-      return [...metadataLines, ...parsed].sort((a, b) => a.time - b.time);
-    },
-    [],
-  );
-
   useEffect(() => {
     if (!currentSong) return;
     if (matchStatus !== "idle") return;
 
     const fetchLyrics = async () => {
-      setMatchStatus("matching");
-
+      // If song already has lyrics, mark as success
       if (currentSong.lyrics != null && currentSong.lyrics.length > 0) {
+        setMatchStatus("success");
         return;
       }
+
+      // Only fetch if explicitly marked as needing lyrics match
+      if (!currentSong.needsLyricsMatch) {
+        setMatchStatus("failed");
+        return;
+      }
+
+      setMatchStatus("matching");
 
       if (currentSong.isNetease && currentSong.neteaseId) {
         const raw = await fetchLyricsById(currentSong.neteaseId);
         if (raw) {
           updateSongInQueue(currentSong.id, {
             lyrics: mergeLyricsWithMetadata(raw),
+            needsLyricsMatch: false,
           });
           setMatchStatus("success");
         } else {
+          updateSongInQueue(currentSong.id, {
+            needsLyricsMatch: false,
+          });
           setMatchStatus("failed");
         }
       } else {
+        // Cloud matching for local files
         const result = await searchAndMatchLyrics(
           currentSong.title,
           currentSong.artist,
@@ -231,16 +244,20 @@ export const usePlayer = ({
         if (result) {
           updateSongInQueue(currentSong.id, {
             lyrics: mergeLyricsWithMetadata(result),
+            needsLyricsMatch: false,
           });
           setMatchStatus("success");
         } else {
+          updateSongInQueue(currentSong.id, {
+            needsLyricsMatch: false,
+          });
           setMatchStatus("failed");
         }
       }
     };
 
     fetchLyrics();
-  }, [currentSong, matchStatus, updateSongInQueue]);
+  }, [currentSong, matchStatus, updateSongInQueue, mergeLyricsWithMetadata]);
 
   useEffect(() => {
     if (
@@ -280,20 +297,6 @@ export const usePlayer = ({
       setMatchStatus("idle");
     }
   }, [queue, currentIndex]);
-
-  const sortLyricsWithMetadata = (result: {
-    lrc: string;
-    tLrc?: string;
-    metadata: string[];
-  }) => {
-    const parsed = parseLrc(result.lrc, result.tLrc);
-    const metadataCount = result.metadata.length;
-    const metadataLines = result.metadata.map((text, idx) => ({
-      time: -0.01 * (metadataCount - idx),
-      text,
-    }));
-    return [...metadataLines, ...parsed].sort((a, b) => a.time - b.time);
-  };
 
   return {
     audioRef,

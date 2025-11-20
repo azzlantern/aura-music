@@ -6,9 +6,9 @@ import Controls from "./components/Controls";
 import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
+import TopBar from "./components/TopBar";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
-import { AuraLogo } from "./components/Icons";
 
 const App: React.FC = () => {
   const playlist = usePlaylist();
@@ -42,8 +42,6 @@ const App: React.FC = () => {
 
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [volume, setVolume] = useState(1);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const lrcInputRef = useRef<HTMLInputElement>(null);
 
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [activePanel, setActivePanel] = useState<"controls" | "lyrics">(
@@ -98,14 +96,7 @@ const App: React.FC = () => {
     };
   }, [isMobileLayout]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const inputElement = e.target;
-    const files = inputElement.files;
-    if (!files || files.length === 0) {
-      inputElement.value = "";
-      return;
-    }
-
+  const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
     const addedSongs = await playlist.addLocalFiles(files);
     if (addedSongs.length > 0) {
@@ -113,7 +104,6 @@ const App: React.FC = () => {
         handlePlaylistAddition(addedSongs, wasEmpty);
       }, 0);
     }
-    inputElement.value = "";
   };
 
   const handleImportUrl = async (input: string) => {
@@ -130,12 +120,6 @@ const App: React.FC = () => {
         handlePlaylistAddition(result.songs, wasEmpty);
       }, 0);
     }
-  };
-
-  const handleLrcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    loadLyricsFile(file);
-    e.target.value = "";
   };
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -302,55 +286,8 @@ const App: React.FC = () => {
         onToggleMode={toggleMode}
       />
 
-      {/* Top Bar (Hover to Reveal, White Blur) */}
-      <div className="fixed top-0 left-0 w-full h-14 z-[60] group">
-        {/* Blur Background Layer (Animate in) */}
-        <div className="absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
-
-        {/* Content (Animate in) */}
-        <div className="relative z-10 w-full h-full px-6 flex justify-between items-center opacity-0 group-hover:opacity-100 translate-y-[-10px] group-hover:translate-y-0 transition-all duration-500 delay-75">
-          <div className="flex items-center gap-3">
-            {/* Logo */}
-            <div className="w-8 h-8 rounded-[8px] shadow-lg shadow-purple-500/20 overflow-hidden">
-              <AuraLogo className="w-full h-full" />
-            </div>
-            <h1 className="text-white/90 font-bold tracking-wider text-sm uppercase hidden sm:block">
-              Aura Music
-            </h1>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md transition-colors"
-            >
-              Load Files
-            </button>
-            <button
-              onClick={() => lrcInputRef.current?.click()}
-              className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md transition-colors"
-              disabled={!currentSong}
-            >
-              Load .lrc
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="audio/*"
-              multiple
-              className="hidden"
-            />
-            <input
-              type="file"
-              ref={lrcInputRef}
-              onChange={handleLrcChange}
-              accept=".lrc,.txt"
-              className="hidden"
-            />
-          </div>
-        </div>
-      </div>
+      {/* Top Bar */}
+      <TopBar onFilesSelected={handleFileChange} />
 
       {/* Main Content Split */}
       {isMobileLayout ? (

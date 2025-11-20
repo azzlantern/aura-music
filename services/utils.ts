@@ -551,7 +551,7 @@ export const mergeLyrics = (original: string, translation: string): string => {
 };
 
 // Metadata Parser using jsmediatags
-export const parseAudioMetadata = (file: File): Promise<{ title?: string, artist?: string, picture?: string }> => {
+export const parseAudioMetadata = (file: File): Promise<{ title?: string, artist?: string, picture?: string, lyrics?: string }> => {
   return new Promise((resolve) => {
     if (typeof jsmediatags === 'undefined') {
       console.warn("jsmediatags not loaded");
@@ -565,7 +565,8 @@ export const parseAudioMetadata = (file: File): Promise<{ title?: string, artist
                 try {
                     const tags = tag.tags;
                     let pictureUrl = undefined;
-                    
+                    let lyricsText = undefined;
+
                     if (tags.picture) {
                         const { data, format } = tags.picture;
                         let base64String = "";
@@ -576,10 +577,22 @@ export const parseAudioMetadata = (file: File): Promise<{ title?: string, artist
                         pictureUrl = `data:${format};base64,${window.btoa(base64String)}`;
                     }
 
+                    // Extract embedded lyrics (USLT tag for unsynchronized lyrics)
+                    // Some formats also use "lyrics" or "LYRICS" tag
+                    if (tags.USLT) {
+                        // USLT can be an object with lyrics.text or just a string
+                        lyricsText = typeof tags.USLT === 'object' ? tags.USLT.lyrics || tags.USLT.text : tags.USLT;
+                    } else if (tags.lyrics) {
+                        lyricsText = tags.lyrics;
+                    } else if (tags.LYRICS) {
+                        lyricsText = tags.LYRICS;
+                    }
+
                     resolve({
                         title: tags.title,
                         artist: tags.artist,
-                        picture: pictureUrl
+                        picture: pictureUrl,
+                        lyrics: lyricsText
                     });
                 } catch (innerErr) {
                     console.error("Error parsing tags structure:", innerErr);

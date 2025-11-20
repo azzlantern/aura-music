@@ -4,12 +4,48 @@ import {
   extractColors,
   parseAudioMetadata,
   parseNeteaseLink,
+  parseLrc,
 } from "../services/utils";
 import {
   fetchNeteasePlaylist,
   fetchNeteaseSong,
   getNeteaseAudioUrl,
 } from "../services/lyricsService";
+
+// Levenshtein distance for fuzzy matching
+const levenshteinDistance = (str1: string, str2: string): number => {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+
+  return matrix[len1][len2];
+};
+
+// Calculate similarity score (0-1, higher is better)
+const calculateSimilarity = (str1: string, str2: string): number => {
+  const distance = levenshteinDistance(str1, str2);
+  const maxLen = Math.max(str1.length, str2.length);
+  if (maxLen === 0) return 1;
+  return 1 - distance / maxLen;
+};
 
 export interface ImportResult {
   success: boolean;
@@ -21,14 +57,17 @@ export const usePlaylist = () => {
   const [queue, setQueue] = useState<Song[]>([]);
   const [originalQueue, setOriginalQueue] = useState<Song[]>([]);
 
-  const updateSongInQueue = useCallback((id: string, updates: Partial<Song>) => {
-    setQueue((prev) =>
-      prev.map((song) => (song.id === id ? { ...song, ...updates } : song)),
-    );
-    setOriginalQueue((prev) =>
-      prev.map((song) => (song.id === id ? { ...song, ...updates } : song)),
-    );
-  }, []);
+  const updateSongInQueue = useCallback(
+    (id: string, updates: Partial<Song>) => {
+      setQueue((prev) =>
+        prev.map((song) => (song.id === id ? { ...song, ...updates } : song)),
+      );
+      setOriginalQueue((prev) =>
+        prev.map((song) => (song.id === id ? { ...song, ...updates } : song)),
+      );
+    },
+    [],
+  );
 
   const appendSongs = useCallback((songs: Song[]) => {
     if (songs.length === 0) return;
@@ -46,15 +85,50 @@ export const usePlaylist = () => {
     async (files: FileList | File[]) => {
       const fileList =
         files instanceof FileList ? Array.from(files) : Array.from(files);
+
+      // Separate audio and lyrics files
+      const audioFiles: File[] = [];
+      const lyricsFiles: File[] = [];
+
+      fileList.forEach((file) => {
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "lrc" || ext === "txt") {
+          lyricsFiles.push(file);
+        } else {
+          audioFiles.push(file);
+        }
+      });
+
       const newSongs: Song[] = [];
 
-      for (let i = 0; i < fileList.length; i++) {
-        const file = fileList[i];
+      // Build lyrics map: extract song title from filename (part after first "-")
+      // Remove Netease IDs like (12345678) from title
+      const lyricsMap = new Map<string, File>();
+      lyricsFiles.forEach((file) => {
+        const basename = file.name.replace(/\.[^/.]+$/, "");
+        const firstDashIndex = basename.indexOf("-");
+
+        // If has "-", use part after first dash as title, otherwise use full basename
+        let title = firstDashIndex > 0 && firstDashIndex < basename.length - 1
+          ? basename.substring(firstDashIndex + 1).trim()
+          : basename;
+
+        // Remove Netease ID pattern like (12345678) or [12345678]
+        title = title.replace(/[\(\[]?\d{7,9}[\)\]]?/g, "").trim();
+
+        lyricsMap.set(title.toLowerCase(), file);
+      });
+
+      // Process audio files
+      for (let i = 0; i < audioFiles.length; i++) {
+        const file = audioFiles[i];
         const url = URL.createObjectURL(file);
-        let title = file.name.replace(/\.[^/.]+$/, "");
+        const basename = file.name.replace(/\.[^/.]+$/, "");
+        let title = basename;
         let artist = "Unknown Artist";
         let coverUrl: string | undefined;
         let colors: string[] | undefined;
+        let lyrics: { time: number; text: string }[] = [];
 
         const nameParts = title.split("-");
         if (nameParts.length > 1) {
@@ -70,6 +144,57 @@ export const usePlaylist = () => {
             coverUrl = metadata.picture;
             colors = await extractColors(coverUrl);
           }
+
+          // Check for embedded lyrics first (highest priority)
+          if (metadata.lyrics && metadata.lyrics.trim().length > 0) {
+            try {
+              lyrics = parseLrc(metadata.lyrics);
+            } catch (err) {
+              console.warn("Failed to parse embedded lyrics", err);
+            }
+          }
+
+          // If no embedded lyrics, try to match lyrics by fuzzy matching
+          if (lyrics.length === 0) {
+            // Normalize song title for matching
+            const songTitle = title.toLowerCase().trim();
+
+            // Try exact match first
+            let matchedLyricsFile = lyricsMap.get(songTitle);
+
+            // If no exact match, try fuzzy matching
+            if (!matchedLyricsFile && lyricsMap.size > 0) {
+              let bestMatch: { file: File; score: number } | null = null;
+              const minSimilarity = 0.75; // Require 75% similarity (allows 1-2 errors for typical song titles)
+
+              for (const [lyricsTitle, lyricsFile] of lyricsMap.entries()) {
+                const similarity = calculateSimilarity(songTitle, lyricsTitle);
+
+                if (similarity >= minSimilarity) {
+                  if (!bestMatch || similarity > bestMatch.score) {
+                    bestMatch = { file: lyricsFile, score: similarity };
+                  }
+                }
+              }
+
+              if (bestMatch) {
+                matchedLyricsFile = bestMatch.file;
+              }
+            }
+
+            // Load matched lyrics file
+            if (matchedLyricsFile) {
+              const reader = new FileReader();
+              const lrcText = await new Promise<string>((resolve) => {
+                reader.onload = (e) =>
+                  resolve((e.target?.result as string) || "");
+                reader.readAsText(matchedLyricsFile!);
+              });
+              if (lrcText) {
+                lyrics = parseLrc(lrcText);
+              }
+            }
+          }
         } catch (err) {
           console.warn("Local metadata extraction failed", err);
         }
@@ -80,8 +205,9 @@ export const usePlaylist = () => {
           artist,
           fileUrl: url,
           coverUrl,
-          lyrics: [],
+          lyrics,
           colors: colors && colors.length > 0 ? colors : undefined,
+          needsLyricsMatch: lyrics.length === 0, // Flag for cloud matching
         });
       }
 
@@ -128,7 +254,11 @@ export const usePlaylist = () => {
         }
       } catch (err) {
         console.error("Failed to fetch Netease music", err);
-        return { success: false, message: "Failed to load songs from URL", songs: [] };
+        return {
+          success: false,
+          message: "Failed to load songs from URL",
+          songs: [],
+        };
       }
 
       appendSongs(newSongs);
