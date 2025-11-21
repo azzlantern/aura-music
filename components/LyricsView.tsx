@@ -339,9 +339,9 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       className={`relative h-[95vh] lg:h-[65vh] w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none`}
       style={{
         maskImage:
-          "linear-gradient(to bottom, transparent 0%, black 25%, black 30%, transparent 100%)",
+          "linear-gradient(to bottom, transparent 0%, black 15%, black 30%, transparent 100%)",
         WebkitMaskImage:
-          "linear-gradient(to bottom, transparent 0%, black 20%, black 30%, transparent 100%)",
+          "linear-gradient(to bottom, transparent 0%, black 15%, black 30%, transparent 100%)",
       }}
     >
       <div
