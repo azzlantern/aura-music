@@ -311,7 +311,6 @@ const App: React.FC = () => {
       ) : (
         <FluidBackground
           colors={currentSong?.colors || []}
-          coverUrl={currentSong?.coverUrl}
           isPlaying={playState === PlayState.PLAYING}
         />
       )}

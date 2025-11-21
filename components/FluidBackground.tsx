@@ -1,32 +1,41 @@
 import React, { useRef, useEffect } from "react";
 
 interface FluidBackgroundProps {
-  colors: string[];
-  coverUrl?: string;
-  isPlaying: boolean;
+  colors?: string[];
+  isPlaying?: boolean;
   targetFps?: number;
 }
 
 const FluidBackground: React.FC<FluidBackgroundProps> = ({
   colors,
-  isPlaying,
+  isPlaying = true,
   targetFps = 60,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
 
-  // Time tracking for pause/resume
+  // 用于暂停/恢复的时间追踪
   const timeRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
   const lastRenderTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
+  const colorsRef = useRef(colors);
 
-  // Sync ref to avoid effect re-trigger
+  // 同步 ref 以避免 effect 重新触发
   useEffect(() => {
     isPlayingRef.current = isPlaying;
+    // 如果从暂停切换到播放，重置 lastFrameTime 以防止时间跳跃
+    if (isPlaying) {
+      lastFrameTimeRef.current = performance.now();
+    }
   }, [isPlaying]);
 
-  // Fallback colors
+  // 同步颜色 ref
+  useEffect(() => {
+    colorsRef.current = colors;
+  }, [colors]);
+
+  // 默认颜色方案
   const defaultColors = [
     "rgb(60, 20, 80)",
     "rgb(100, 40, 60)",
@@ -38,6 +47,7 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // 获取 WebGL 上下文
     const gl = canvas.getContext("webgl");
     if (!gl) {
       console.error("WebGL not supported");
@@ -45,9 +55,10 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
     }
 
     // --------------------------------------------------------
-    // 1. SHADER SOURCES
+    // 1. 着色器源码 (Shader Sources)
     // --------------------------------------------------------
 
+    // See https://www.shadertoy.com/view/wdyczG
     const vertexShaderSource = `
       attribute vec2 position;
       void main() {
@@ -60,69 +71,75 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
 
       uniform vec2 uResolution;
       uniform float uTime;
-      uniform sampler2D uTexture; // Holds the color palette gradient
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+      uniform vec3 uColor3;
+      uniform vec3 uColor4;
 
-      // Random function
-      float rand(vec2 n) {
-          return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+      #define S(a,b,t) smoothstep(a,b,t)
+
+      mat2 Rot(float a) {
+          float s = sin(a);
+          float c = cos(a);
+          return mat2(c, -s, s, c);
       }
 
-      // Cubic Noise function
-      float noise(vec2 p){
-          vec2 ip = floor(p);
-          vec2 u = fract(p);
-          u = u*u*(3.0-2.0*u); // Cubic smoothstep
-
-          float res = mix(
-              mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
-              mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
-          return res*res;
+      // Created by inigo quilez - iq/2014
+      // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+      vec2 hash(vec2 p) {
+          p = vec2(dot(p, vec2(2127.1, 81.17)), dot(p, vec2(1269.5, 283.37)));
+          return fract(sin(p) * 43758.5453);
       }
 
-      const mat2 mtx = mat2( 0.80,  0.60, -0.60,  0.80 );
+      float noise(in vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
 
-      // Fractional Brownian Motion
-      float fbm( vec2 p ) {
-          float f = 0.0;
+          vec2 u = f * f * (3.0 - 2.0 * f);
 
-          // Octaves with standard decay for softer details
-          f += 0.500000 * noise( p + uTime * 0.5 ); p = mtx * p * 2.02;
-          f += 0.312500 * noise( p ); p = mtx * p * 2.03;
-          f += 0.250000 * noise( p ); p = mtx * p * 2.01;
-          //f += 0.062500 * noise( p ); p = mtx * p * 2.04;
-
-          return f / 0.96875;
-      }
-
-      // Domain Warping Pattern
-      float pattern( in vec2 p ) {
-          // Reduced warping strength (0.6 / 0.5) to soften transitions
-          return fbm( p + 0.6 * fbm( p + 0.5 * fbm( p ) ) );
+          float n = mix(
+              mix(dot(-1.0 + 2.0 * hash(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
+                  dot(-1.0 + 2.0 * hash(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+              mix(dot(-1.0 + 2.0 * hash(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
+                  dot(-1.0 + 2.0 * hash(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
+          return 0.5 + 0.5 * n;
       }
 
       void main() {
           vec2 uv = gl_FragCoord.xy / uResolution.xy;
-          // Correct aspect ratio
-          uv.x *= uResolution.x / uResolution.y;
+          float ratio = uResolution.x / uResolution.y;
 
-          // Zoom out slightly for larger, softer shapes
-          uv *= 0.4;
+          vec2 tuv = uv;
+          tuv -= 0.5;
 
-          float shade = pattern(uv);
+          // rotate with Noise
+          float degree = noise(vec2(uTime * 0.1, tuv.x * tuv.y));
 
-          // Smoothstep to remove harsh extremes
-          shade = smoothstep(0.0, 1.0, shade);
+          tuv.y *= 1.0 / ratio;
+          tuv *= Rot(radians((degree - 0.5) * 720.0 + 180.0));
+          tuv.y *= ratio;
 
-          // Map the noise value (shade) to our dynamic color gradient texture
-          // clamp ensures we don't wrap around the texture edge
-          vec4 color = texture2D(uTexture, vec2(clamp(shade, 0.001, 0.999), 0.5));
+          // Wave warp with sin
+          float frequency = 5.0;
+          float amplitude = 30.0;
+          float speed = uTime * 2.0;
+          tuv.x += sin(tuv.y * frequency + speed) / amplitude;
+          tuv.y += sin(tuv.x * frequency * 1.5 + speed) / (amplitude * 0.5);
 
-          gl_FragColor = vec4(color.rgb, 1.0);
+          // draw the image using dynamic colors
+          vec3 layer1 = mix(uColor1, uColor2, S(-0.3, 0.2, (tuv * Rot(radians(-5.0))).x));
+          vec3 layer2 = mix(uColor3, uColor4, S(-0.3, 0.2, (tuv * Rot(radians(-5.0))).x));
+
+          vec3 finalComp = mix(layer1, layer2, S(0.5, -0.3, tuv.y));
+
+          vec3 col = finalComp;
+
+          gl_FragColor = vec4(col, 1.0);
       }
     `;
 
     // --------------------------------------------------------
-    // 2. COMPILE SHADERS
+    // 2. 编译着色器 (Compile Shaders)
     // --------------------------------------------------------
 
     const createShader = (
@@ -159,9 +176,10 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
     gl.useProgram(program);
 
     // --------------------------------------------------------
-    // 3. SETUP GEOMETRY
+    // 3. 设置几何体 (Setup Geometry)
     // --------------------------------------------------------
 
+    // 创建覆盖全屏的两个三角形（一个矩形）
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     const positions = [
@@ -174,52 +192,25 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
     gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
 
     // --------------------------------------------------------
-    // 4. GENERATE GRADIENT TEXTURE
+    // 4. 颜色解析工具函数 (Color Parsing)
     // --------------------------------------------------------
 
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    const updateTexture = () => {
-      const activeColors = colors && colors.length > 0 ? colors : defaultColors;
-      const width = 512;
-      const height = 1;
-
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const ctx = tempCanvas.getContext("2d");
-
-      if (ctx) {
-        const grad = ctx.createLinearGradient(0, 0, width, 0);
-        // Distribute colors evenly
-        activeColors.forEach((c, i) => {
-          grad.addColorStop(i / Math.max(1, activeColors.length - 1), c);
-        });
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, width, height);
-
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(
-          gl.TEXTURE_2D,
-          0,
-          gl.RGBA,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          tempCanvas,
-        );
+    const parseColor = (colorStr: string): [number, number, number] => {
+      // 解析 rgb(r, g, b) 格式
+      const rgbMatch = colorStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (rgbMatch) {
+        return [
+          parseInt(rgbMatch[1]) / 255,
+          parseInt(rgbMatch[2]) / 255,
+          parseInt(rgbMatch[3]) / 255,
+        ];
       }
+      // 默认返回黑色
+      return [0, 0, 0];
     };
 
-    updateTexture();
-
     // --------------------------------------------------------
-    // 5. RENDER LOOP
+    // 5. 渲染循环 (Render Loop)
     // --------------------------------------------------------
 
     const resolutionUniformLocation = gl.getUniformLocation(
@@ -227,10 +218,13 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
       "uResolution",
     );
     const timeUniformLocation = gl.getUniformLocation(program, "uTime");
-    const textureUniformLocation = gl.getUniformLocation(program, "uTexture");
+    const color1UniformLocation = gl.getUniformLocation(program, "uColor1");
+    const color2UniformLocation = gl.getUniformLocation(program, "uColor2");
+    const color3UniformLocation = gl.getUniformLocation(program, "uColor3");
+    const color4UniformLocation = gl.getUniformLocation(program, "uColor4");
 
     const render = (now: number) => {
-      // Frame rate limiting
+      // 帧率限制逻辑
       const frameInterval = 1000 / targetFps;
       const elapsed = now - lastRenderTimeRef.current;
 
@@ -241,6 +235,7 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
 
       lastRenderTimeRef.current = now - (elapsed % frameInterval);
 
+      // 响应式画布大小调整
       if (
         canvas.width !== canvas.clientWidth ||
         canvas.height !== canvas.clientHeight
@@ -253,7 +248,7 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
       gl.useProgram(program);
       gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
 
-      // Delta time calculation for smooth pause/resume
+      // 计算时间增量
       const dt = now - lastFrameTimeRef.current;
       lastFrameTimeRef.current = now;
 
@@ -261,36 +256,55 @@ const FluidBackground: React.FC<FluidBackgroundProps> = ({
         timeRef.current += dt;
       }
 
-      // Speed factor: 0.0005
+      // 获取当前颜色并解析
+      const activeColors =
+        colorsRef.current && colorsRef.current.length >= 4
+          ? colorsRef.current
+          : defaultColors;
+      const color1 = parseColor(activeColors[0]);
+      const color2 = parseColor(activeColors[1]);
+      const color3 = parseColor(activeColors[2]);
+      const color4 = parseColor(activeColors[3]);
+
+      // 传入时间和颜色uniforms
       gl.uniform1f(timeUniformLocation, timeRef.current * 0.0005);
-      gl.uniform1i(textureUniformLocation, 0);
+      gl.uniform3f(color1UniformLocation, color1[0], color1[1], color1[2]);
+      gl.uniform3f(color2UniformLocation, color2[0], color2[1], color2[2]);
+      gl.uniform3f(color3UniformLocation, color3[0], color3[1], color3[2]);
+      gl.uniform3f(color4UniformLocation, color4[0], color4[1], color4[2]);
 
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       animationRef.current = requestAnimationFrame(render);
     };
 
-    // Init time to avoid huge jump on first frame
     lastFrameTimeRef.current = performance.now();
-    requestAnimationFrame(render);
+    lastRenderTimeRef.current = performance.now(); // 初始化
+    animationRef.current = requestAnimationFrame(render);
 
     return () => {
       cancelAnimationFrame(animationRef.current);
+      // 清理 WebGL 资源
+      gl.deleteProgram(program);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      gl.deleteBuffer(positionBuffer);
     };
-  }, [colors, targetFps]);
+  }, [targetFps]); // 仅当目标帧率改变时重新初始化 WebGL，颜色通过 ref 动态更新
 
   return (
     <>
       <canvas
         ref={canvasRef}
-        className="fixed inset-0 w-full h-full bg-black"
+        className="fixed inset-0 w-full h-full bg-black block"
+        style={{ touchAction: "none" }}
       />
-      {/* Subtle noise overlay for texture */}
+      {/* 噪点遮罩 - 增加质感 */}
       <div
         className="fixed inset-0 w-full h-full pointer-events-none opacity-[0.03] mix-blend-overlay"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
         }}
-      ></div>
+      />
     </>
   );
 };

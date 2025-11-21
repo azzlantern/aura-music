@@ -670,9 +670,9 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
   };
 
   return new Promise((resolve) => {
-    if (typeof ColorThief === 'undefined') {
+    if (typeof ColorThief === "undefined") {
       console.warn("ColorThief not loaded");
-      resolve(['#4f46e5', '#db2777', '#1f2937']);
+      resolve(["#4f46e5", "#db2777", "#1f2937"]);
       return;
     }
 
@@ -700,7 +700,8 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
         });
 
         // If we filtered everything out (very dark album), fall back to original palette
-        const candidates = vibrantCandidates.length > 0 ? vibrantCandidates : palette;
+        const candidates =
+          vibrantCandidates.length > 0 ? vibrantCandidates : palette;
 
         // 3. Sort by "Vibrancy" (approx Saturation: Max - Min channel value)
         candidates.sort((a: number[], b: number[]) => {
@@ -709,8 +710,8 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
           return satB - satA; // Descending saturation
         });
 
-        // 4. Take Top 3
-        const topColors = candidates.slice(0, 3);
+        // 4. Take Top 4
+        const topColors = candidates.slice(0, 4);
 
         const colorStrings = topColors.map((c: number[]) => {
           const adjusted = capBrightness(c);
