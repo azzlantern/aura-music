@@ -12,6 +12,7 @@ interface KeyboardShortcutsProps {
   volume: number;
   onVolumeChange: (vol: number) => void;
   onToggleMode: () => void;
+  onTogglePlaylist: () => void;
 }
 
 const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
@@ -25,6 +26,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
   volume,
   onVolumeChange,
   onToggleMode,
+  onTogglePlaylist,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -51,6 +53,13 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
       if ((e.ctrlKey || e.metaKey) && e.key === "/") {
         e.preventDefault();
         setIsOpen((prev) => !prev);
+        return;
+      }
+
+      // Ctrl + P
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        onTogglePlaylist();
         return;
       }
 
@@ -113,6 +122,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
     onSeek,
     onVolumeChange,
     onToggleMode,
+    onTogglePlaylist,
   ]);
 
   if (!isVisible) return null;
@@ -165,7 +175,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
             >
               <svg
                 width="12"
@@ -191,6 +201,8 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
             <ShortcutItem keys={["←", "→"]} label="Seek ±5s" />
             <ShortcutItem keys={["Ctrl", "←/→"]} label="Prev / Next Song" />
             <ShortcutItem keys={["↑", "↓"]} label="Volume Control" />
+            <ShortcutItem keys={["Ctrl", "K"]} label="Search" />
+            <ShortcutItem keys={["Ctrl", "P"]} label="Toggle Playlist" />
             <ShortcutItem keys={["Ctrl", "/"]} label="Toggle Shortcuts" />
           </div>
 

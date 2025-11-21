@@ -20,6 +20,7 @@ interface UsePlayerParams {
   originalQueue: Song[];
   updateSongInQueue: (id: string, updates: Partial<Song>) => void;
   setQueue: Dispatch<SetStateAction<Song[]>>;
+  setOriginalQueue: Dispatch<SetStateAction<Song[]>>;
 }
 
 export const usePlayer = ({
@@ -27,6 +28,7 @@ export const usePlayer = ({
   originalQueue,
   updateSongInQueue,
   setQueue,
+  setOriginalQueue,
 }: UsePlayerParams) => {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [playState, setPlayState] = useState<PlayState>(PlayState.PAUSED);
@@ -155,6 +157,26 @@ export const usePlayer = ({
       setMatchStatus("idle");
     },
     [queue.length],
+  );
+
+  const addSongAndPlay = useCallback(
+    (song: Song) => {
+      // Update both queues atomically
+      setQueue((prev) => {
+        const newQueue = [...prev, song];
+        const newIndex = newQueue.length - 1;
+
+        // Set index and play state immediately in the same update cycle
+        setCurrentIndex(newIndex);
+        setPlayState(PlayState.PLAYING);
+        setMatchStatus("idle");
+
+        return newQueue;
+      });
+
+      setOriginalQueue((prev) => [...prev, song]);
+    },
+    [setQueue, setOriginalQueue]
   );
 
   const handlePlaylistAddition = useCallback(
@@ -318,5 +340,6 @@ export const usePlayer = ({
     handleLoadedMetadata,
     handlePlaylistAddition,
     loadLyricsFile,
+    addSongAndPlay,
   };
 };

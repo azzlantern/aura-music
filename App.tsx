@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { PlayState } from "./types";
+import { PlayState, Song } from "./types";
 import FluidBackground from "./components/FluidBackground";
 import MobileFluidBackground from "./components/MobileFluidBackground";
 import Controls from "./components/Controls";
@@ -7,8 +7,10 @@ import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import TopBar from "./components/TopBar";
+import SearchModal from "./components/SearchModal";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
+import { keyboardRegistry } from "./services/keyboardRegistry";
 
 const App: React.FC = () => {
   const playlist = usePlaylist();
@@ -17,6 +19,7 @@ const App: React.FC = () => {
     originalQueue: playlist.originalQueue,
     updateSongInQueue: playlist.updateSongInQueue,
     setQueue: playlist.setQueue,
+    setOriginalQueue: playlist.setOriginalQueue,
   });
 
   const {
@@ -38,9 +41,11 @@ const App: React.FC = () => {
     handlePlaylistAddition,
     loadLyricsFile,
     playIndex,
+    addSongAndPlay,
   } = player;
 
   const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [volume, setVolume] = useState(1);
 
   const [isMobileLayout, setIsMobileLayout] = useState(false);
@@ -96,6 +101,25 @@ const App: React.FC = () => {
     };
   }, [isMobileLayout]);
 
+  // Global Keyboard Registry Initialization
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => keyboardRegistry.handle(e);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Global Search Shortcut (Registered directly via useEffect for simplicity, or could use useKeyboardScope with high priority)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearch((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
     const addedSongs = await playlist.addLocalFiles(files);
@@ -120,6 +144,29 @@ const App: React.FC = () => {
         handlePlaylistAddition(result.songs, wasEmpty);
       }, 0);
     }
+  };
+
+  const handleImportAndPlay = (song: Song) => {
+    // Check if song already exists in queue (by neteaseId for cloud songs, or by id)
+    const existingIndex = playlist.queue.findIndex((s) => {
+      if (song.isNetease && s.isNetease) {
+        return s.neteaseId === song.neteaseId;
+      }
+      return s.id === song.id;
+    });
+
+    if (existingIndex !== -1) {
+      // Song already in queue, just play it
+      playIndex(existingIndex);
+    } else {
+      // Add and play atomically - no race conditions!
+      addSongAndPlay(song);
+    }
+  };
+
+  const handleAddToQueue = (song: Song) => {
+    playlist.setQueue((prev) => [...prev, song]);
+    playlist.setOriginalQueue((prev) => [...prev, song]);
   };
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -284,10 +331,27 @@ const App: React.FC = () => {
         volume={volume}
         onVolumeChange={setVolume}
         onToggleMode={toggleMode}
+        onTogglePlaylist={() => setShowPlaylist((prev) => !prev)}
       />
 
       {/* Top Bar */}
-      <TopBar onFilesSelected={handleFileChange} />
+      <TopBar
+        onFilesSelected={handleFileChange}
+        onSearchClick={() => setShowSearch(true)}
+      />
+
+      {/* Search Modal - Always rendered to preserve state, visibility handled internally */}
+      <SearchModal
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        queue={playlist.queue}
+        onPlayQueueIndex={playIndex}
+        onImportAndPlay={handleImportAndPlay}
+        onAddToQueue={handleAddToQueue}
+        currentSong={currentSong}
+        isPlaying={playState === PlayState.PLAYING}
+        accentColor={accentColor}
+      />
 
       {/* Main Content Split */}
       {isMobileLayout ? (

@@ -1,12 +1,17 @@
 import React, { useRef } from "react";
-import { AuraLogo } from "./Icons";
+import { AuraLogo, SearchIcon, CloudDownloadIcon } from "./Icons";
 
 interface TopBarProps {
   onFilesSelected: (files: FileList) => void;
+  onSearchClick: () => void;
   disabled?: boolean;
 }
 
-const TopBar: React.FC<TopBarProps> = ({ onFilesSelected, disabled }) => {
+const TopBar: React.FC<TopBarProps> = ({
+  onFilesSelected,
+  onSearchClick,
+  disabled,
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,25 +28,38 @@ const TopBar: React.FC<TopBarProps> = ({ onFilesSelected, disabled }) => {
       <div className="absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
 
       {/* Content (Animate in) */}
-      <div className="relative z-10 w-full h-full px-6 flex justify-between items-center opacity-0 group-hover:opacity-100 translate-y-[-10px] group-hover:translate-y-0 transition-all duration-500 delay-75">
-        <div className="flex items-center gap-3">
-          {/* Logo */}
-          <div className="w-8 h-8 rounded-[8px] shadow-lg shadow-purple-500/20 overflow-hidden">
+      <div className="relative z-10 w-full h-full px-6 flex justify-between items-center pointer-events-auto">
+        {/* Logo / Title */}
+        <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 -translate-y-2 group-hover:translate-y-0 transition-all duration-500 ease-out">
+          <div className="w-9 h-9 rounded-[10px] shadow-lg shadow-purple-500/20 overflow-hidden">
             <AuraLogo className="w-full h-full" />
           </div>
-          <h1 className="text-white/90 font-bold tracking-wider text-sm uppercase hidden sm:block">
+          <h1 className="text-white/90 font-bold tracking-wider text-sm uppercase hidden sm:block drop-shadow-md">
             Aura Music
           </h1>
         </div>
 
-        <div className="flex gap-2">
+        {/* Actions (iOS 18 Style Glass Buttons) */}
+        <div className="flex gap-3 opacity-0 group-hover:opacity-100 -translate-y-2 group-hover:translate-y-0 transition-all duration-500 ease-out delay-75">
+          {/* Search Button */}
+          <button
+            onClick={onSearchClick}
+            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/80 hover:bg-white/20 hover:text-white hover:scale-105 active:scale-95 transition-all shadow-sm"
+            title="Search (Cmd+K)"
+          >
+            <SearchIcon className="w-5 h-5" />
+          </button>
+
+          {/* Import Button */}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/80 hover:bg-white/20 hover:text-white hover:scale-105 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Import Local Files"
           >
-            Import Files
+            <CloudDownloadIcon className="w-5 h-5" />
           </button>
+
           <input
             type="file"
             ref={fileInputRef}

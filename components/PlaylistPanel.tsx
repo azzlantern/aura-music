@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Song } from '../types';
 import { CheckIcon, LinkIcon, PlusIcon, QueueIcon } from './Icons';
+import { useKeyboardScope } from '../hooks/useKeyboardScope';
 
 const IOS_SCROLLBAR_STYLES = `
   .playlist-scrollbar {
@@ -65,6 +66,20 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
   // Virtualization Constants
   const ITEM_HEIGHT = 74; // Approx height of each item (including margin)
   const OVERSCAN = 5;
+
+  // ESC key support using keyboard scope
+  useKeyboardScope(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isAdding) {
+        e.preventDefault();
+        onClose();
+        return true; // Claim the event
+      }
+      return false;
+    },
+    100, // High priority
+    isOpen, // Only active when panel is open
+  );
 
   // Handle animation visibility
   useEffect(() => {
