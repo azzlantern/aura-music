@@ -88,6 +88,14 @@ export const usePlayer = ({
       audioRef.current.pause();
       setPlayState(PlayState.PAUSED);
     } else {
+      const duration = audioRef.current.duration || 0;
+      const isAtEnd =
+        duration > 0 &&
+        audioRef.current.currentTime >= duration - 0.01;
+      if (isAtEnd) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
       audioRef.current.play().catch((err) => console.error("Play failed", err));
       setPlayState(PlayState.PLAYING);
     }
@@ -158,6 +166,26 @@ export const usePlayer = ({
     },
     [queue.length],
   );
+
+  const handleAudioEnded = useCallback(() => {
+    if (playMode === PlayMode.LOOP_ONE) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current
+          .play()
+          .catch((err) => console.error("Play failed", err));
+      }
+      setPlayState(PlayState.PLAYING);
+      return;
+    }
+
+    if (queue.length === 1) {
+      setPlayState(PlayState.PAUSED);
+      return;
+    }
+
+    playNext();
+  }, [playMode, queue.length, playNext]);
 
   const addSongAndPlay = useCallback(
     (song: Song) => {
@@ -381,6 +409,7 @@ export const usePlayer = ({
     handlePlaylistAddition,
     loadLyricsFile,
     addSongAndPlay,
+    handleAudioEnded,
     setSpeed: handleSetSpeed,
     setPitch: handleSetPitch,
   };

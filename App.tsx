@@ -44,6 +44,7 @@ const App: React.FC = () => {
     loadLyricsFile,
     playIndex,
     addSongAndPlay,
+    handleAudioEnded,
   } = player;
 
   const [showPlaylist, setShowPlaylist] = useState(false);
@@ -324,7 +325,7 @@ const App: React.FC = () => {
         src={currentSong?.fileUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={playNext}
+        onEnded={handleAudioEnded}
         crossOrigin="anonymous"
       />
 
