@@ -43,27 +43,29 @@ export const SCALE_BG_SPRING: SpringConfig = {
 
 // --- Apple Music Style Physics Presets ---
 
-// Past lines: High stiffness to "throw" them out of view quickly without bouncing back
+// Past lines: Very High stiffness. 
+// When a line moves from Active -> Past, it should "snap" up out of the way quickly.
 export const PAST_SPRING: SpringConfig = {
-    mass: 0.8,
-    stiffness: 220, // Stiffer
-    damping: 40,    // Overdamped to prevent any return bounce
+    mass: 1,
+    stiffness: 350, // Very stiff
+    damping: 45,    // High damping to prevent bounce on the snap
     precision: 0.1
 };
 
-// Current line: Critically damped for fast arrival with minimal to no overshoot
+// Current line: Fast arrival, responsive.
 export const ACTIVE_SPRING: SpringConfig = {
     mass: 1,
-    stiffness: 170, // Fast response
-    damping: 26,    // Critical damping (2*sqrt(170*1) ≈ 26.07). Zero bounce.
+    stiffness: 220, // Fast response
+    damping: 30,    // Critical damping
     precision: 0.1
 };
 
-// Future lines: Tighter follower
+// Future lines: Low stiffness (loose spring).
+// This creates the "drag" effect where they scroll slower than the active line.
 export const FUTURE_SPRING: SpringConfig = {
-    mass: 1.1,
-    stiffness: 100,
-    damping: 22,    // Critical damping (2*sqrt(100*1.1) ≈ 20.9). Slightly overdamped.
+    mass: 1.2,
+    stiffness: 70,  // Soft/Loose spring
+    damping: 20,    // Sufficient damping to avoid oscillation
     precision: 0.1
 };
 

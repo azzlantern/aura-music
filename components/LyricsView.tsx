@@ -1,5 +1,10 @@
-
-import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from "react";
+import React, {
+  useRef,
+  useEffect,
+  useState,
+  useLayoutEffect,
+  useCallback,
+} from "react";
 import { LyricLine as LyricLineType } from "../types";
 import LyricLine, { LineMotionPlan, SharedMotionState } from "./LyricLine";
 import { SpringSystem, POS_Y_SPRING } from "../services/springSystem";
@@ -65,7 +70,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   type ImpulseDescriptor = Omit<LineMotionPlan["impulse"], "id">;
 
   const createImpulseDescriptor = (
-    relativeIndex: number
+    relativeIndex: number,
   ): ImpulseDescriptor | undefined => {
     // Past lines
     if (relativeIndex < 0) {
@@ -152,15 +157,25 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       // --- Calculate Target Scroll Position ---
       let rawTargetScrollY = 0;
 
+      // Focal point setting: 20%
+      // This determines where the active line sits on the screen.
+      // 0.20 = 20% from the top.
+      const FOCAL_POINT_RATIO = 0.2;
+
       if (activeIndex !== -1) {
         const activeEl = lineRefs.current.get(activeIndex);
         const containerH =
           containerRef.current?.clientHeight || window.innerHeight * 0.6;
 
         if (activeEl) {
-          // We want active element ~20% down the screen
-          const desiredPos = containerH * 0.2;
-          rawTargetScrollY = activeEl.offsetTop - desiredPos;
+          // TARGET: Center of active line at 15% down the container (Apple Music Style)
+          const focalPoint = containerH * FOCAL_POINT_RATIO;
+          const elementCenterOffset = activeEl.clientHeight / 2;
+
+          // We want (offsetTop + elementCenter) to align with (scrollTop + focalPoint)
+          // So scrollTop = offsetTop + elementCenter - focalPoint
+          rawTargetScrollY =
+            activeEl.offsetTop + elementCenterOffset - focalPoint;
         }
       }
 
@@ -181,7 +196,6 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         finalScrollY = system.getCurrent("y");
       } else {
         // AUTO SCROLL:
-        // FIX: Do NOT use the spring system here. 
         // Pass the RAW target directly to LyricLine.
         // LyricLine has its own spring. If we spring here + spring there = double spring (lag).
         finalScrollY = rawTargetScrollY;
@@ -195,11 +209,12 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       sharedMotionRef.current.targetPosY = -finalScrollY;
 
       // Calculate Active Point (center of highlight zone) in "Lyrics Content Space"
-      // If we are scrolled to 1000px, and the highlight zone is 200px down the screen,
-      // the "active point" in the document is at 1200px.
+      // If we are scrolled to 1000px, and the highlight zone is 15% down the screen,
+      // the "active point" in the document is at 1000px + 15% height.
       let activePointBase = finalScrollY;
       if (containerRef.current) {
-        activePointBase += containerRef.current.clientHeight * 0.2;
+        activePointBase +=
+          containerRef.current.clientHeight * FOCAL_POINT_RATIO;
       }
       sharedMotionRef.current.activePoint = activePointBase;
 
@@ -219,7 +234,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         motionPlansRef.current[idx] ?? {
           version: 0,
           relativeIndex: 0,
-        }
+        },
     );
     setPlanVersion((v) => v + 1);
   }, [lyrics.length]);
@@ -227,11 +242,10 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   useEffect(() => {
     if (activeIndex === -1) return;
     motionPlansRef.current = lyrics.map((_, idx) => {
-      const previous =
-        motionPlansRef.current[idx] ?? {
-          version: 0,
-          relativeIndex: 0,
-        };
+      const previous = motionPlansRef.current[idx] ?? {
+        version: 0,
+        relativeIndex: 0,
+      };
       const relativeIndex = idx - activeIndex;
       const descriptor = createImpulseDescriptor(relativeIndex);
       return {
@@ -245,7 +259,6 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     setPlanVersion((v) => v + 1);
   }, [activeIndex, lyrics]);
 
-
   // -------------------------------------------------------------------------
   // Interaction Handlers
   // -------------------------------------------------------------------------
@@ -257,11 +270,6 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     scrollState.current.touchStartY = touchY;
     scrollState.current.touchLastY = touchY;
     scrollState.current.touchVelocity = 0;
-
-    // Important: Sync system to current visual position before taking over
-    // But since we bypass system in auto-mode, we might need to read where we are?
-    // Actually, the loop updates system.setValue('y', raw) constantly in auto mode, 
-    // so it's ready to be grabbed.
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -299,7 +307,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         lineRefs.current.delete(index);
       }
     },
-    []
+    [],
   );
 
   // -------------------------------------------------------------------------
@@ -328,15 +336,12 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`relative h-[95vh] ${hasTranslation ? "lg:h-[75vh]" : "lg:h-[65vh]"
-        } w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none`}
+      className={`relative h-[95vh] lg:h-[65vh] w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none`}
       style={{
-        maskImage: hasTranslation
-          ? "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)"
-          : "linear-gradient(to bottom, transparent 0%, black 40%, black 50%, transparent 100%)",
-        WebkitMaskImage: hasTranslation
-          ? "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)"
-          : "linear-gradient(to bottom, transparent 0%, black 40%, black 50%, transparent 100%)",
+        maskImage:
+          "linear-gradient(to bottom, transparent 0%, black 25%, black 30%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to bottom, transparent 0%, black 20%, black 30%, transparent 100%)",
       }}
     >
       <div
