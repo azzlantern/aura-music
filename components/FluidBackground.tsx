@@ -1,308 +1,263 @@
-import React, { useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FlowingLayer, createFlowingLayers, defaultColors as mobileDefaultColors } from "./background/mobile";
+import { UIBackgroundRender } from "./background/renderer/UIBackgroundRender";
+import { WebWorkerBackgroundRender } from "./background/renderer/WebWorkerBackgroundRender";
+
+const workerUrl = new URL(
+  "./background/renderer/webWorkerBackground.worker.ts",
+  import.meta.url,
+);
+
+const desktopGradientDefaults = [
+  "rgb(60, 20, 80)",
+  "rgb(100, 40, 60)",
+  "rgb(20, 20, 40)",
+  "rgb(40, 40, 90)",
+];
+
+const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
+
+const calculateTransform = (layer: FlowingLayer, elapsed: number) => {
+  const progress = ((elapsed + layer.startTime) % layer.duration) / layer.duration;
+  const eased = easeInOutSine(progress);
+
+  const x = layer.startX + Math.sin(progress * Math.PI * 2) * 0.15;
+  const y = layer.startY + Math.cos(progress * Math.PI * 2) * 0.12;
+  const scale = layer.startScale + Math.sin(progress * Math.PI * 2) * 0.08;
+  const rotation = Math.sin(progress * Math.PI * 2) * 0.08;
+
+  return { x, y, scale, rotation, eased };
+};
 
 interface FluidBackgroundProps {
   colors?: string[];
   isPlaying?: boolean;
-  targetFps?: number;
+  coverUrl?: string;
+  isMobileLayout?: boolean;
 }
 
 const FluidBackground: React.FC<FluidBackgroundProps> = ({
   colors,
   isPlaying = true,
-  targetFps = 60,
+  coverUrl,
+  isMobileLayout = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>(0);
-
-  // 用于暂停/恢复的时间追踪
-  const timeRef = useRef<number>(0);
-  const lastFrameTimeRef = useRef<number>(0);
-  const lastRenderTimeRef = useRef<number>(0);
+  const rendererRef = useRef<UIBackgroundRender | WebWorkerBackgroundRender | null>(null);
+  const layersRef = useRef<FlowingLayer[]>([]);
   const isPlayingRef = useRef(isPlaying);
-  const colorsRef = useRef(colors);
+  const startTimeOffsetRef = useRef(0);
+  const lastPausedTimeRef = useRef(0);
+  const colorsRef = useRef<string[] | undefined>(colors);
+  const [canvasInstanceKey, setCanvasInstanceKey] = useState(0);
+  const previousModeRef = useRef(isMobileLayout);
 
-  // 同步 ref 以避免 effect 重新触发
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-    // 如果从暂停切换到播放，重置 lastFrameTime 以防止时间跳跃
-    if (isPlaying) {
-      lastFrameTimeRef.current = performance.now();
-    }
-  }, [isPlaying]);
+  const normalizedColors = useMemo(
+    () => (colors && colors.length > 0 ? colors : mobileDefaultColors),
+    [colors],
+  );
 
-  // 同步颜色 ref
+  const colorKey = useMemo(() => normalizedColors.join("|"), [normalizedColors]);
+
   useEffect(() => {
     colorsRef.current = colors;
   }, [colors]);
 
-  // 默认颜色方案
-  const defaultColors = [
-    "rgb(60, 20, 80)",
-    "rgb(100, 40, 60)",
-    "rgb(20, 20, 40)",
-    "rgb(40, 40, 90)",
-  ];
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (previousModeRef.current !== isMobileLayout) {
+      setCanvasInstanceKey((prev) => prev + 1);
+      previousModeRef.current = isMobileLayout;
+    }
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      layersRef.current = [];
+      return;
+    }
+    let cancelled = false;
+    const generate = async () => {
+      const newLayers = await createFlowingLayers(normalizedColors, coverUrl, 4);
+      if (cancelled) return;
+      layersRef.current = newLayers;
+    };
+    generate();
+    return () => {
+      cancelled = true;
+    };
+  }, [colorKey, coverUrl, normalizedColors, isMobileLayout]);
+
+  const renderMobileFrame = useCallback(
+    (ctx: CanvasRenderingContext2D, currentTime: number) => {
+      const width = ctx.canvas.width;
+      const height = ctx.canvas.height;
+      let elapsed = currentTime;
+
+      if (!isPlayingRef.current) {
+        lastPausedTimeRef.current = currentTime;
+        elapsed = startTimeOffsetRef.current;
+      } else if (lastPausedTimeRef.current > 0) {
+        startTimeOffsetRef.current = elapsed;
+        lastPausedTimeRef.current = 0;
+      }
+
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, width, height);
+
+      if (layersRef.current.length === 0) {
+        ctx.fillStyle = "#222";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "#666";
+        ctx.font = "16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Loading layers...", width / 2, height / 2);
+        return;
+      }
+
+      layersRef.current.forEach((layer, index) => {
+        const transform = calculateTransform(layer, elapsed);
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(transform.rotation);
+        ctx.scale(transform.scale, transform.scale);
+        ctx.translate(width * transform.x, height * transform.y);
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 0.5 + index * 0.05;
+        ctx.filter = "blur(35px)";
+        const drawWidth = width * 1.5;
+        const drawHeight = height * 1.5;
+        ctx.drawImage(
+          layer.image,
+          -drawWidth / 2,
+          -drawHeight / 2,
+          drawWidth,
+          drawHeight,
+        );
+        ctx.restore();
+      });
+    },
+    [],
+  );
+
+  const renderGradientFrame = useCallback((ctx: CanvasRenderingContext2D) => {
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    const palette =
+      colorsRef.current && colorsRef.current.length > 0
+        ? colorsRef.current
+        : desktopGradientDefaults;
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    palette.forEach((color, index) => {
+      gradient.addColorStop(index / Math.max(1, palette.length - 1), color);
+    });
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+  }, []);
+
+  useEffect(() => {
+    const resize = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      if (canvas.dataset.offscreenTransferred === "true") {
+        if (rendererRef.current instanceof WebWorkerBackgroundRender) {
+          rendererRef.current.resize(width, height);
+        }
+        return;
+      }
+
+      if (rendererRef.current instanceof WebWorkerBackgroundRender) {
+        rendererRef.current.resize(width, height);
+        return;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      rendererRef.current?.resize(width, height);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [isMobileLayout, canvasInstanceKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // 获取 WebGL 上下文
-    const gl = canvas.getContext("webgl");
-    if (!gl) {
-      console.error("WebGL not supported");
+    if (canvas.dataset.offscreenTransferred === "true") {
+      setCanvasInstanceKey((prev) => prev + 1);
       return;
     }
 
-    // --------------------------------------------------------
-    // 1. 着色器源码 (Shader Sources)
-    // --------------------------------------------------------
+    const shouldUseWorker =
+      !isMobileLayout && WebWorkerBackgroundRender.isSupported(canvas);
 
-    // See https://www.shadertoy.com/view/wdyczG
-    const vertexShaderSource = `
-      attribute vec2 position;
-      void main() {
-        gl_Position = vec4(position, 0.0, 1.0);
-      }
-    `;
+    if (shouldUseWorker && rendererRef.current instanceof WebWorkerBackgroundRender) {
+      return;
+    }
 
-    const fragmentShaderSource = `
-      precision highp float;
+    if (rendererRef.current) {
+      rendererRef.current.stop();
+      rendererRef.current = null;
+    }
 
-      uniform vec2 uResolution;
-      uniform float uTime;
-      uniform vec3 uColor1;
-      uniform vec3 uColor2;
-      uniform vec3 uColor3;
-      uniform vec3 uColor4;
+    if (shouldUseWorker) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const workerRenderer = new WebWorkerBackgroundRender(canvas, workerUrl);
+      workerRenderer.start(colorsRef.current ?? []);
+      rendererRef.current = workerRenderer;
+      return () => {
+        workerRenderer.stop();
+        rendererRef.current = null;
+      };
+    }
 
-      #define S(a,b,t) smoothstep(a,b,t)
-
-      mat2 Rot(float a) {
-          float s = sin(a);
-          float c = cos(a);
-          return mat2(c, -s, s, c);
-      }
-
-      // Created by inigo quilez - iq/2014
-      // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
-      vec2 hash(vec2 p) {
-          p = vec2(dot(p, vec2(2127.1, 81.17)), dot(p, vec2(1269.5, 283.37)));
-          return fract(sin(p) * 43758.5453);
-      }
-
-      float noise(in vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-
-          vec2 u = f * f * (3.0 - 2.0 * f);
-
-          float n = mix(
-              mix(dot(-1.0 + 2.0 * hash(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
-                  dot(-1.0 + 2.0 * hash(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
-              mix(dot(-1.0 + 2.0 * hash(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
-                  dot(-1.0 + 2.0 * hash(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
-          return 0.5 + 0.5 * n;
-      }
-
-      void main() {
-          vec2 uv = gl_FragCoord.xy / uResolution.xy;
-          float ratio = uResolution.x / uResolution.y;
-
-          vec2 tuv = uv;
-          tuv -= 0.5;
-
-          // rotate with Noise
-          float degree = noise(vec2(uTime * 0.1, tuv.x * tuv.y));
-
-          tuv.y *= 1.0 / ratio;
-          tuv *= Rot(radians((degree - 0.5) * 720.0 + 180.0));
-          tuv.y *= ratio;
-
-          // Wave warp with sin
-          float frequency = 5.0;
-          float amplitude = 30.0;
-          float speed = uTime * 2.0;
-          tuv.x += sin(tuv.y * frequency + speed) / amplitude;
-          tuv.y += sin(tuv.x * frequency * 1.5 + speed) / (amplitude * 0.5);
-
-          // draw the image using dynamic colors
-          vec3 layer1 = mix(uColor1, uColor2, S(-0.3, 0.2, (tuv * Rot(radians(-5.0))).x));
-          vec3 layer2 = mix(uColor3, uColor4, S(-0.3, 0.2, (tuv * Rot(radians(-5.0))).x));
-
-          vec3 finalComp = mix(layer1, layer2, S(0.5, -0.3, tuv.y));
-
-          vec3 col = finalComp;
-
-          gl_FragColor = vec4(col, 1.0);
-      }
-    `;
-
-    // --------------------------------------------------------
-    // 2. 编译着色器 (Compile Shaders)
-    // --------------------------------------------------------
-
-    const createShader = (
-      gl: WebGLRenderingContext,
-      type: number,
-      source: string,
-    ) => {
-      const shader = gl.createShader(type);
-      if (!shader) return null;
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error(gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-      }
-      return shader;
-    };
-
-    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-    const fragmentShader = createShader(
-      gl,
-      gl.FRAGMENT_SHADER,
-      fragmentShaderSource,
-    );
-
-    if (!vertexShader || !fragmentShader) return;
-
-    const program = gl.createProgram();
-    if (!program) return;
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    gl.useProgram(program);
-
-    // --------------------------------------------------------
-    // 3. 设置几何体 (Setup Geometry)
-    // --------------------------------------------------------
-
-    // 创建覆盖全屏的两个三角形（一个矩形）
-    const positionBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    const positions = [
-      -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0,
-    ];
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-    const positionAttributeLocation = gl.getAttribLocation(program, "position");
-    gl.enableVertexAttribArray(positionAttributeLocation);
-    gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
-
-    // --------------------------------------------------------
-    // 4. 颜色解析工具函数 (Color Parsing)
-    // --------------------------------------------------------
-
-    const parseColor = (colorStr: string): [number, number, number] => {
-      // 解析 rgb(r, g, b) 格式
-      const rgbMatch = colorStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-      if (rgbMatch) {
-        return [
-          parseInt(rgbMatch[1]) / 255,
-          parseInt(rgbMatch[2]) / 255,
-          parseInt(rgbMatch[3]) / 255,
-        ];
-      }
-      // 默认返回黑色
-      return [0, 0, 0];
-    };
-
-    // --------------------------------------------------------
-    // 5. 渲染循环 (Render Loop)
-    // --------------------------------------------------------
-
-    const resolutionUniformLocation = gl.getUniformLocation(
-      program,
-      "uResolution",
-    );
-    const timeUniformLocation = gl.getUniformLocation(program, "uTime");
-    const color1UniformLocation = gl.getUniformLocation(program, "uColor1");
-    const color2UniformLocation = gl.getUniformLocation(program, "uColor2");
-    const color3UniformLocation = gl.getUniformLocation(program, "uColor3");
-    const color4UniformLocation = gl.getUniformLocation(program, "uColor4");
-
-    const render = (now: number) => {
-      // 帧率限制逻辑
-      const frameInterval = 1000 / targetFps;
-      const elapsed = now - lastRenderTimeRef.current;
-
-      if (elapsed < frameInterval) {
-        animationRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      lastRenderTimeRef.current = now - (elapsed % frameInterval);
-
-      // 响应式画布大小调整
-      if (
-        canvas.width !== canvas.clientWidth ||
-        canvas.height !== canvas.clientHeight
-      ) {
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-        gl.viewport(0, 0, canvas.width, canvas.height);
-      }
-
-      gl.useProgram(program);
-      gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
-
-      // 计算时间增量
-      const dt = now - lastFrameTimeRef.current;
-      lastFrameTimeRef.current = now;
-
-      if (isPlayingRef.current) {
-        timeRef.current += dt;
-      }
-
-      // 获取当前颜色并解析
-      const activeColors =
-        colorsRef.current && colorsRef.current.length >= 4
-          ? colorsRef.current
-          : defaultColors;
-      const color1 = parseColor(activeColors[0]);
-      const color2 = parseColor(activeColors[1]);
-      const color3 = parseColor(activeColors[2]);
-      const color4 = parseColor(activeColors[3]);
-
-      // 传入时间和颜色uniforms
-      gl.uniform1f(timeUniformLocation, timeRef.current * 0.0005);
-      gl.uniform3f(color1UniformLocation, color1[0], color1[1], color1[2]);
-      gl.uniform3f(color2UniformLocation, color2[0], color2[1], color2[2]);
-      gl.uniform3f(color3UniformLocation, color3[0], color3[1], color3[2]);
-      gl.uniform3f(color4UniformLocation, color4[0], color4[1], color4[2]);
-
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      animationRef.current = requestAnimationFrame(render);
-    };
-
-    lastFrameTimeRef.current = performance.now();
-    lastRenderTimeRef.current = performance.now(); // 初始化
-    animationRef.current = requestAnimationFrame(render);
+    const renderCallback = isMobileLayout ? renderMobileFrame : renderGradientFrame;
+    const uiRenderer = new UIBackgroundRender(canvas, renderCallback);
+    uiRenderer.resize(window.innerWidth, window.innerHeight);
+    uiRenderer.setPaused(!isPlaying);
+    uiRenderer.start();
+    rendererRef.current = uiRenderer;
 
     return () => {
-      cancelAnimationFrame(animationRef.current);
-      // 清理 WebGL 资源
-      gl.deleteProgram(program);
-      gl.deleteShader(vertexShader);
-      gl.deleteShader(fragmentShader);
-      gl.deleteBuffer(positionBuffer);
+      uiRenderer.stop();
+      rendererRef.current = null;
     };
-  }, [targetFps]); // 仅当目标帧率改变时重新初始化 WebGL，颜色通过 ref 动态更新
+  }, [isMobileLayout, renderGradientFrame, renderMobileFrame, workerUrl, canvasInstanceKey]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (renderer instanceof WebWorkerBackgroundRender) {
+      renderer.setColors(colors ?? []);
+      renderer.setPlaying(isPlaying);
+    } else if (renderer instanceof UIBackgroundRender) {
+      renderer.setPaused(!isPlaying);
+    }
+  }, [colors, isPlaying]);
+
+  const canvasKey = `${isMobileLayout ? "mobile" : "desktop"}-${canvasInstanceKey}`;
 
   return (
     <>
       <canvas
         ref={canvasRef}
+        key={canvasKey}
         className="fixed inset-0 w-full h-full bg-black block"
         style={{ touchAction: "none" }}
       />
-      {/* 噪点遮罩 - 增加质感 */}
       <div
         className="fixed inset-0 w-full h-full pointer-events-none opacity-[0.03] mix-blend-overlay"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")",
         }}
       />
     </>

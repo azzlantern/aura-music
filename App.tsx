@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { useToast } from "./hooks/useToast";
 import { PlayState, Song } from "./types";
 import FluidBackground from "./components/FluidBackground";
-import MobileFluidBackground from "./components/MobileFluidBackground";
 import Controls from "./components/Controls";
 import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
@@ -296,18 +295,13 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden">
-      {isMobileLayout ? (
-        <MobileFluidBackground
-          colors={currentSong?.colors || []}
-          coverUrl={currentSong?.coverUrl}
-          isPlaying={playState === PlayState.PLAYING}
-        />
-      ) : (
-        <FluidBackground
-          colors={currentSong?.colors || []}
-          isPlaying={playState === PlayState.PLAYING}
-        />
-      )}
+      <FluidBackground
+        key={isMobileLayout ? "mobile" : "desktop"}
+        colors={currentSong?.colors || []}
+        coverUrl={currentSong?.coverUrl}
+        isPlaying={playState === PlayState.PLAYING}
+        isMobileLayout={isMobileLayout}
+      />
 
       <audio
         ref={audioRef}

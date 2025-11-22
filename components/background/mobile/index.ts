@@ -1,11 +1,3 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-interface MobileFluidBackgroundProps {
-  colors: string[];
-  coverUrl?: string;
-  isPlaying: boolean;
-}
-
 interface FlowingLayer {
   image: HTMLCanvasElement;
   startX: number;
@@ -17,7 +9,6 @@ interface FlowingLayer {
 
 const defaultColors = ["#8b5cf6", "#ec4899", "#f97316", "#3b82f6"];
 
-// Apple Music 的 mesh 扭曲参数
 const MESH_FLOATS = [
   -0.2351, -0.0967, 0.2135, -0.1414, 0.9221, -0.0908, 0.9221, -0.0685, 1.3027,
   0.0253, 1.2351, 0.1786, -0.3768, 0.1851, 0.2, 0.2, 0.6615, 0.3146, 0.9543,
@@ -37,7 +28,6 @@ const loadImage = (src: string) =>
     img.src = src;
   });
 
-// 缩放 Canvas
 const scaleCanvas = (
   source: HTMLCanvasElement,
   newWidth: number,
@@ -55,11 +45,7 @@ const scaleCanvas = (
   return canvas;
 };
 
-// 模糊 Canvas
-const blurCanvas = (
-  source: HTMLCanvasElement,
-  radius: number,
-): HTMLCanvasElement => {
+const blurCanvas = (source: HTMLCanvasElement, radius: number) => {
   const canvas = document.createElement("canvas");
   canvas.width = source.width;
   canvas.height = source.height;
@@ -71,11 +57,10 @@ const blurCanvas = (
   return canvas;
 };
 
-// 实现 Bitmap Mesh 扭曲效果
 const applyMeshDistortion = (
   source: HTMLCanvasElement,
   meshVerts: number[],
-): HTMLCanvasElement => {
+) => {
   const canvas = document.createElement("canvas");
   canvas.width = source.width;
   canvas.height = source.height;
@@ -112,7 +97,6 @@ const applyMeshDistortion = (
       const x4 = verts[bottomLeft * 2];
       const y4 = verts[bottomLeft * 2 + 1];
 
-      // 上三角形
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -132,7 +116,6 @@ const applyMeshDistortion = (
       }
       ctx.restore();
 
-      // 下三角形
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(x2, y2);
@@ -157,11 +140,7 @@ const applyMeshDistortion = (
   return canvas;
 };
 
-// 调整饱和度
-const adjustSaturation = (
-  source: HTMLCanvasElement,
-  saturation: number,
-): HTMLCanvasElement => {
+const adjustSaturation = (source: HTMLCanvasElement, saturation: number) => {
   const canvas = document.createElement("canvas");
   canvas.width = source.width;
   canvas.height = source.height;
@@ -173,24 +152,20 @@ const adjustSaturation = (
   return canvas;
 };
 
-// 计算亮度
-const getBrightness = (canvas: HTMLCanvasElement): number => {
+const getBrightness = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return 0.5;
 
   const centerX = Math.floor(canvas.width / 2);
   const centerY = Math.floor(canvas.height / 2);
   const pixel = ctx.getImageData(centerX, centerY, 1, 1).data;
-
   const r = pixel[0] / 255;
   const g = pixel[1] / 255;
   const b = pixel[2] / 255;
-
   return 0.299 * r + 0.587 * g + 0.114 * b;
 };
 
-// 添加亮度遮罩
-const applyBrightnessMask = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
+const applyBrightnessMask = (canvas: HTMLCanvasElement) => {
   const brightness = getBrightness(canvas);
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
@@ -206,44 +181,26 @@ const applyBrightnessMask = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
   return canvas;
 };
 
-// 完整的流光溢彩处理流程
-const processBitmap = (source: HTMLCanvasElement): HTMLCanvasElement => {
-  // 1. 缩小到 150px
+const processBitmap = (source: HTMLCanvasElement) => {
   const smallWidth = 150;
   const smallHeight = Math.floor((source.height / source.width) * smallWidth);
   let canvas = scaleCanvas(source, smallWidth, smallHeight);
-
-  // 2. 第一次高斯模糊 (25px)
   canvas = blurCanvas(canvas, 25);
-
-  // 3. 第一次 mesh 处理
   canvas = applyMeshDistortion(canvas, MESH_FLOATS);
-
-  // 4. 放大到 1000px
   const largeWidth = 1000;
   const largeHeight = Math.floor((canvas.height / canvas.width) * largeWidth);
   canvas = scaleCanvas(canvas, largeWidth, largeHeight);
-
-  // 5. 第二次 mesh 处理
   canvas = applyMeshDistortion(canvas, MESH_FLOATS);
-
-  // 6. 第二次高斯模糊 (12px)
   canvas = blurCanvas(canvas, 12);
-
-  // 7. 饱和度增强 (1.8)
   canvas = adjustSaturation(canvas, 1.8);
-
-  // 8. 亮度调整
   canvas = applyBrightnessMask(canvas);
-
   return canvas;
 };
 
-// 创建基础纹理
 const createBaseTexture = async (
   colors: string[],
   coverUrl: string | undefined,
-): Promise<HTMLCanvasElement> => {
+) => {
   const size = 600;
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -251,7 +208,6 @@ const createBaseTexture = async (
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
 
-  // 1. 创建渐变背景
   const gradient = ctx.createLinearGradient(0, 0, size, size);
   colors.forEach((color, idx) => {
     gradient.addColorStop(idx / Math.max(1, colors.length - 1), color);
@@ -259,7 +215,6 @@ const createBaseTexture = async (
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
 
-  // 2. 叠加封面（如果有）
   if (coverUrl) {
     try {
       const img = await loadImage(coverUrl);
@@ -268,16 +223,14 @@ const createBaseTexture = async (
       const h = img.height * scale;
       const x = (size - w) / 2;
       const y = (size - h) / 2;
-
       ctx.globalAlpha = 0.9;
       ctx.drawImage(img, x, y, w, h);
       ctx.globalAlpha = 1.0;
-    } catch (e) {
-      console.warn("Failed to load cover", e);
+    } catch (error) {
+      console.warn("Failed to load cover", error);
     }
   }
 
-  // 3. 添加彩色光斑
   for (let i = 0; i < 8; i++) {
     const cx = Math.random() * size;
     const cy = Math.random() * size;
@@ -296,224 +249,37 @@ const createBaseTexture = async (
   return canvas;
 };
 
-// 创建多个流光图层
-const createFlowingLayers = async (
-  colors: string[],
+const normalizeColors = (colors: string[] | undefined): string[] => {
+  if (!colors || colors.length === 0) {
+    return defaultColors;
+  }
+  return colors;
+};
+
+export const createFlowingLayers = async (
+  colors: string[] | undefined,
   coverUrl: string | undefined,
   count: number = 4,
 ): Promise<FlowingLayer[]> => {
+  const normalized = normalizeColors(colors);
   const layers: FlowingLayer[] = [];
 
   for (let i = 0; i < count; i++) {
-    // 为每个图层创建不同的基础纹理
-    const baseCanvas = await createBaseTexture(colors, coverUrl);
+    const baseCanvas = await createBaseTexture(normalized, coverUrl);
     const processed = processBitmap(baseCanvas);
 
     layers.push({
       image: processed,
-      startX: (Math.random() - 0.5) * 0.2, // -10% to 10%
+      startX: (Math.random() - 0.5) * 0.2,
       startY: (Math.random() - 0.5) * 0.2,
       startScale: 1.15 + Math.random() * 0.1,
-      duration: 20000 + Math.random() * 15000, // ms
-      startTime: -i * 5000, // 错开开始时间
+      duration: 20000 + Math.random() * 15000,
+      startTime: -i * 5000,
     });
   }
 
   return layers;
 };
 
-const MobileFluidBackground: React.FC<MobileFluidBackgroundProps> = ({
-  colors,
-  coverUrl,
-  isPlaying,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const layersRef = useRef<FlowingLayer[]>([]);
-  const animationIdRef = useRef<number | null>(null);
-  const [layersReady, setLayersReady] = useState(false);
-
-  const normalizedColors = useMemo(
-    () => (colors && colors.length > 0 ? colors : defaultColors),
-    [colors],
-  );
-
-  const colorKey = useMemo(
-    () => normalizedColors.join("|"),
-    [normalizedColors],
-  );
-
-  // 生成图层
-  useEffect(() => {
-    let cancelled = false;
-    setLayersReady(false);
-    const generate = async () => {
-      const newLayers = await createFlowingLayers(
-        normalizedColors,
-        coverUrl,
-        4,
-      );
-      if (cancelled) return;
-      layersRef.current = newLayers;
-      setLayersReady(true);
-    };
-    generate();
-    return () => {
-      cancelled = true;
-    };
-  }, [colorKey, coverUrl, normalizedColors]);
-
-  // Ken Burns 动画效果
-  const calculateTransform = (layer: FlowingLayer, elapsed: number) => {
-    const progress =
-      ((elapsed + layer.startTime) % layer.duration) / layer.duration;
-
-    // 使用缓动函数
-    const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
-    const eased = easeInOutSine(progress);
-
-    // 计算位移
-    const x = layer.startX + Math.sin(progress * Math.PI * 2) * 0.15;
-    const y = layer.startY + Math.cos(progress * Math.PI * 2) * 0.12;
-
-    // 计算缩放
-    const scale = layer.startScale + Math.sin(progress * Math.PI * 2) * 0.08;
-
-    // 计算旋转
-    const rotation = Math.sin(progress * Math.PI * 2) * 0.08; // ±5度
-
-    return { x, y, scale, rotation };
-  };
-
-  // 渲染循环
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let startTimeOffset = 0;
-    let lastPausedTime = 0;
-
-    const render = (currentTime: number) => {
-      const width = canvas.width;
-      const height = canvas.height;
-
-      // 计算实际经过的时间（考虑暂停）
-      let elapsed = currentTime;
-      if (!isPlaying) {
-        lastPausedTime = currentTime;
-        elapsed = startTimeOffset;
-      } else {
-        if (lastPausedTime > 0) {
-          startTimeOffset = elapsed;
-          lastPausedTime = 0;
-        }
-      }
-
-      // 清空画布
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, width, height);
-
-      // 检查图层是否已加载
-      if (layersRef.current.length === 0) {
-        // 显示加载状态
-        ctx.fillStyle = "#222";
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = "#666";
-        ctx.font = "16px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("Loading layers...", width / 2, height / 2);
-        animationIdRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      // 绘制所有图层
-      layersRef.current.forEach((layer, index) => {
-        const transform = calculateTransform(layer, elapsed);
-
-        ctx.save();
-
-        // 移动到画布中心
-        ctx.translate(width / 2, height / 2);
-
-        // 应用旋转
-        ctx.rotate(transform.rotation);
-
-        // 应用缩放
-        ctx.scale(transform.scale, transform.scale);
-
-        // 应用位移
-        ctx.translate(width * transform.x, height * transform.y);
-
-        // 设置混合模式和透明度
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = 0.5 + index * 0.05; // 每层透明度稍有不同
-
-        // 应用模糊
-        ctx.filter = "blur(35px)";
-
-        // 绘制图层（居中）
-        const drawWidth = width * 1.5;
-        const drawHeight = height * 1.5;
-        ctx.drawImage(
-          layer.image,
-          -drawWidth / 2,
-          -drawHeight / 2,
-          drawWidth,
-          drawHeight,
-        );
-
-        ctx.restore();
-      });
-
-      // 绘制渐变遮罩
-      // const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      // gradient.addColorStop(0, "rgba(0, 0, 0, 0.45)");
-      // gradient.addColorStop(0.5, "rgba(0, 0, 0, 0)");
-      // gradient.addColorStop(1, "rgba(0, 0, 0, 0.7)");
-      // ctx.globalCompositeOperation = "source-over";
-      // ctx.globalAlpha = 1.0;
-      // ctx.fillStyle = gradient;
-      // ctx.fillRect(0, 0, width, height);
-
-      animationIdRef.current = requestAnimationFrame(render);
-    };
-
-    animationIdRef.current = requestAnimationFrame(render);
-
-    return () => {
-      if (animationIdRef.current) {
-        cancelAnimationFrame(animationIdRef.current);
-      }
-    };
-  }, [isPlaying, layersReady]);
-
-  // 处理窗口大小变化
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-
-    return () => {
-      window.removeEventListener("resize", resizeCanvas);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 w-full h-full pointer-events-none"
-      style={{ background: "#000" }}
-    />
-  );
-};
-
-export default MobileFluidBackground;
+export type { FlowingLayer };
+export { defaultColors };
