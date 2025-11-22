@@ -384,7 +384,7 @@ const Controls: React.FC<ControlsProps> = ({
               {getVolumeButtonIcon()}
             </button>
 
-            {/* Volume Popup (iOS 18 Style) */}
+            {/* Volume Popup */}
             {volumeTransitions((style, item) =>
               item ? (
                 <VolumePopup
@@ -454,17 +454,10 @@ const Controls: React.FC<ControlsProps> = ({
               item ? (
                 <SettingsPopup
                   style={style}
-                  pitch={0} // We need to pass actual pitch state here if available, but ControlsProps doesn't have it yet. 
-                  // Wait, ControlsProps DOES NOT have pitch. I need to check if I should add it.
-                  // The user request said "1. pitch 需要类似 ios 那种按钮效果".
-                  // Controls.tsx doesn't seem to have pitch prop in the interface.
-                  // Let me check ControlsProps again.
                   speed={speed}
                   preservesPitch={preservesPitch}
-                  onPitchChange={() => { }} // Placeholder
                   onTogglePreservesPitch={onTogglePreservesPitch}
                   onSpeedChange={onSpeedChange}
-                  accentColor={accentColor}
                 />
               ) : null
             )}
@@ -507,9 +500,9 @@ const VolumePopup: React.FC<VolumePopupProps> = ({
   return (
     <animated.div
       style={style}
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 w-[52px] h-[150px] rounded-[26px] p-1.5 bg-black/40 backdrop-blur-[80px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col cursor-auto"
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 w-[52px] h-[150px] rounded-[26px] p-1.5 bg-black/10 backdrop-blur-[100px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/5 flex flex-col cursor-auto"
     >
-      <div className="relative w-full flex-1 rounded-[20px] bg-white/20 overflow-hidden">
+      <div className="relative w-full flex-1 rounded-[20px] bg-white/20 overflow-hidden backdrop-blur-[28px]">
         {/* Fill */}
         <animated.div
           className="absolute bottom-0 w-full bg-white"
@@ -544,13 +537,10 @@ const VolumePopup: React.FC<VolumePopupProps> = ({
 
 interface SettingsPopupProps {
   style: any;
-  pitch: number;
   speed: number;
   preservesPitch: boolean;
-  onPitchChange: (pitch: number) => void;
   onTogglePreservesPitch: () => void;
   onSpeedChange: (speed: number) => void;
-  accentColor: string;
 }
 
 const SettingsPopup: React.FC<SettingsPopupProps> = ({
@@ -559,59 +549,24 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
   onTogglePreservesPitch,
   speed,
   onSpeedChange,
-  pitch,
-  onPitchChange,
-  accentColor,
 }) => {
-  const { speedH, pitchH } = useSpring({
+  const { speedH } = useSpring({
     speedH: ((speed - 0.5) / 1.5) * 100,
-    pitchH: ((pitch + 1) / 3) * 100, // Pitch range -1 to 2, span 3
     config: { tension: 210, friction: 20 },
   });
 
   return (
     <animated.div
       style={style}
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 p-4 rounded-[26px] bg-black/40 backdrop-blur-[80px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex gap-4 cursor-auto"
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 p-4 rounded-[26px] bg-black/10 backdrop-blur-[100px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/5 flex gap-4 cursor-auto"
     >
-      {/* Pitch Control */}
-      <div className="flex flex-col items-center gap-2 w-12">
-        <div className="h-[150px] w-full relative rounded-[20px] bg-white/20 overflow-hidden">
-          <animated.div
-            className="absolute bottom-0 w-full"
-            style={{
-              height: pitchH.to((h) => `${h}%`),
-              backgroundColor: accentColor || "white",
-            }}
-          />
-          <input
-            type="range"
-            min="-1"
-            max="2"
-            step="0.1"
-            value={pitch}
-            onChange={(e) => onPitchChange(parseFloat(e.target.value))}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer touch-none"
-            style={{
-              WebkitAppearance: "slider-vertical",
-              appearance: "slider-vertical",
-            } as any}
-          />
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none text-[10px] font-bold text-white mix-blend-difference">
-            {pitch.toFixed(1)}
-          </div>
-        </div>
-        <span className="text-[10px] font-medium text-white/60">Pitch</span>
-      </div>
-
       {/* Speed Control */}
       <div className="flex flex-col items-center gap-2 w-12">
-        <div className="h-[150px] w-full relative rounded-[20px] bg-white/20 overflow-hidden">
+        <div className="h-[150px] w-full relative rounded-[20px] bg-white/20 overflow-hidden backdrop-blur-[28px]">
           <animated.div
-            className="absolute bottom-0 w-full"
+            className="absolute bottom-0 w-full bg-white"
             style={{
               height: speedH.to((h) => `${h}%`),
-              backgroundColor: accentColor || "white",
             }}
           />
           <input
@@ -638,12 +593,14 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
       <div className="flex flex-col items-center justify-end gap-2 w-12 pb-6">
         <button
           onClick={onTogglePreservesPitch}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-200 ${preservesPitch ? "bg-white/20 text-white" : "bg-white text-black"
-            }`}
-          style={!preservesPitch && accentColor ? { backgroundColor: accentColor, color: 'white' } : {}}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-200 ${
+            preservesPitch ? "bg-white/20 text-white" : "bg-white text-black"
+          }`}
           title={preservesPitch ? "Tone Preserved" : "Vinyl Mode"}
         >
-          <span className="text-xs font-bold">{preservesPitch ? "Dig" : "Vin"}</span>
+          <span className="text-xs font-bold">
+            {preservesPitch ? "Dig" : "Vin"}
+          </span>
         </button>
         <span className="text-[10px] font-medium text-white/60 text-center leading-tight">
           {preservesPitch ? "Digital" : "Vinyl"}
