@@ -23,6 +23,25 @@ interface UsePlayerParams {
   setOriginalQueue: Dispatch<SetStateAction<Song[]>>;
 }
 
+const MATCH_TIMEOUT_MS = 8000;
+
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Lyrics request timed out"));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+};
+
 export const usePlayer = ({
   queue,
   originalQueue,
@@ -91,8 +110,7 @@ export const usePlayer = ({
     } else {
       const duration = audioRef.current.duration || 0;
       const isAtEnd =
-        duration > 0 &&
-        audioRef.current.currentTime >= duration - 0.01;
+        duration > 0 && audioRef.current.currentTime >= duration - 0.01;
       if (isAtEnd) {
         audioRef.current.currentTime = 0;
         setCurrentTime(0);
@@ -103,7 +121,11 @@ export const usePlayer = ({
   }, [playState]);
 
   const handleSeek = useCallback(
-    (time: number, playImmediately: boolean = false, defer: boolean = false) => {
+    (
+      time: number,
+      playImmediately: boolean = false,
+      defer: boolean = false,
+    ) => {
       if (!audioRef.current) return;
 
       if (defer) {
@@ -127,7 +149,8 @@ export const usePlayer = ({
   );
 
   const handleTimeUpdate = useCallback(() => {
-    // No-op: Using requestAnimationFrame for smooth updates instead
+    if (!audioRef.current || isSeeking.current) return;
+    setCurrentTime(audioRef.current.currentTime);
   }, []);
 
   const handleLoadedMetadata = useCallback(() => {
@@ -212,7 +235,7 @@ export const usePlayer = ({
 
       setOriginalQueue((prev) => [...prev, song]);
     },
-    [setQueue, setOriginalQueue]
+    [setQueue, setOriginalQueue],
   );
 
   const handlePlaylistAddition = useCallback(
@@ -261,61 +284,126 @@ export const usePlayer = ({
   );
 
   useEffect(() => {
-    if (!currentSong) return;
-    if (matchStatus !== "idle") return;
+    if (!currentSong) {
+      if (matchStatus !== "idle") {
+        setMatchStatus("idle");
+      }
+      return;
+    }
+
+    const songId = currentSong.id;
+    const songTitle = currentSong.title;
+    const songArtist = currentSong.artist;
+    const needsLyricsMatch = currentSong.needsLyricsMatch;
+    const existingLyrics = currentSong.lyrics ?? [];
+    const isNeteaseSong = currentSong.isNetease;
+    const songNeteaseId = currentSong.neteaseId;
+
+    let cancelled = false;
+
+    const markMatchFailed = () => {
+      if (cancelled) return;
+      updateSongInQueue(songId, {
+        needsLyricsMatch: false,
+      });
+      setMatchStatus("failed");
+    };
+
+    const markMatchSuccess = () => {
+      if (cancelled) return;
+      setMatchStatus("success");
+    };
+
+    if (existingLyrics.length > 0) {
+      markMatchSuccess();
+      return;
+    }
+
+    if (!needsLyricsMatch) {
+      markMatchFailed();
+      return;
+    }
 
     const fetchLyrics = async () => {
-      // If song already has lyrics, mark as success
-      if (currentSong.lyrics != null && currentSong.lyrics.length > 0) {
-        setMatchStatus("success");
-        return;
-      }
-
-      // Only fetch if explicitly marked as needing lyrics match
-      if (!currentSong.needsLyricsMatch) {
-        setMatchStatus("failed");
-        return;
-      }
-
       setMatchStatus("matching");
-
-      if (currentSong.isNetease && currentSong.neteaseId) {
-        const raw = await fetchLyricsById(currentSong.neteaseId);
-        if (raw) {
-          updateSongInQueue(currentSong.id, {
-            lyrics: mergeLyricsWithMetadata(raw),
-            needsLyricsMatch: false,
-          });
-          setMatchStatus("success");
+      try {
+        if (isNeteaseSong && songNeteaseId) {
+          const raw = await withTimeout(
+            fetchLyricsById(songNeteaseId),
+            MATCH_TIMEOUT_MS,
+          );
+          if (cancelled) return;
+          if (raw) {
+            updateSongInQueue(songId, {
+              lyrics: mergeLyricsWithMetadata(raw),
+              needsLyricsMatch: false,
+            });
+            markMatchSuccess();
+          } else {
+            markMatchFailed();
+          }
         } else {
-          updateSongInQueue(currentSong.id, {
-            needsLyricsMatch: false,
-          });
-          setMatchStatus("failed");
+          const result = await withTimeout(
+            searchAndMatchLyrics(songTitle, songArtist),
+            MATCH_TIMEOUT_MS,
+          );
+          if (cancelled) return;
+          if (result) {
+            updateSongInQueue(songId, {
+              lyrics: mergeLyricsWithMetadata(result),
+              needsLyricsMatch: false,
+            });
+            markMatchSuccess();
+          } else {
+            markMatchFailed();
+          }
         }
-      } else {
-        // Cloud matching for local files
-        const result = await searchAndMatchLyrics(
-          currentSong.title,
-          currentSong.artist,
-        );
-        if (result) {
-          updateSongInQueue(currentSong.id, {
-            lyrics: mergeLyricsWithMetadata(result),
-            needsLyricsMatch: false,
-          });
-          setMatchStatus("success");
-        } else {
-          updateSongInQueue(currentSong.id, {
-            needsLyricsMatch: false,
-          });
-          setMatchStatus("failed");
-        }
+      } catch (error) {
+        console.warn("Lyrics matching failed:", error);
+        markMatchFailed();
       }
     };
 
     fetchLyrics();
-  }, [currentSong, matchStatus, updateSongInQueue, mergeLyricsWithMetadata]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSong?.id, mergeLyricsWithMetadata, updateSongInQueue]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleAudioError = () => {
+      console.warn("Audio playback error detected");
+      audio.pause();
+      audio.currentTime = 0;
+      setPlayState(PlayState.PAUSED);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener("error", handleAudioError);
+    return () => {
+      audio.removeEventListener("error", handleAudioError);
+    };
+  }, [audioRef]);
+
+  // Provide high-precision time updates directly from the native audio element
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleNativeTimeUpdate = () => {
+      if (isSeeking.current) return;
+      setCurrentTime(audio.currentTime);
+    };
+
+    audio.addEventListener("timeupdate", handleNativeTimeUpdate);
+    return () => {
+      audio.removeEventListener("timeupdate", handleNativeTimeUpdate);
+    };
+  }, [audioRef]);
 
   useEffect(() => {
     if (
@@ -375,34 +463,6 @@ export const usePlayer = ({
     }
   }, [currentSong, playState, speed, preservesPitch]);
 
-  useEffect(() => {
-    let frameId: number | null = null;
-
-    const tick = () => {
-      if (audioRef.current && !isSeeking.current) {
-        const audioTime = audioRef.current.currentTime;
-        setCurrentTime((prev) => {
-          if (Math.abs(prev - audioTime) < 0.0005) {
-            return prev;
-          }
-          return audioTime;
-        });
-      }
-      frameId = requestAnimationFrame(tick);
-    };
-
-    if (playState === PlayState.PLAYING) {
-      frameId = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [playState]);
-
-
   return {
     audioRef,
     currentSong,
@@ -430,6 +490,6 @@ export const usePlayer = ({
     setSpeed: handleSetSpeed,
     togglePreservesPitch: handleTogglePreservesPitch,
     pitch: 0, // Default pitch
-    setPitch: (pitch: number) => { }, // Placeholder
+    setPitch: (pitch: number) => {}, // Placeholder
   };
 };

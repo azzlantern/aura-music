@@ -162,6 +162,8 @@ const Controls: React.FC<ControlsProps> = ({
   const lastTimeRef = useRef(0);
   const animationFrameRef = useRef(0);
 
+  const clampScale = (value: number) => Math.max(0.8, Math.min(1.05, value));
+
   const startAnimation = () => {
     if (animationFrameRef.current)
       cancelAnimationFrame(animationFrameRef.current);
@@ -173,7 +175,7 @@ const Controls: React.FC<ControlsProps> = ({
 
       const isMoving = springSystem.update(dt);
       if (coverRef.current) {
-        const scale = springSystem.getCurrent("scale");
+        const scale = clampScale(springSystem.getCurrent("scale"));
         coverRef.current.style.transform = `scale(${scale})`;
       }
 
