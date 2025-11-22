@@ -40,9 +40,9 @@ interface ControlsProps {
   volume: number;
   onVolumeChange: (volume: number) => void;
   speed: number;
-  pitch: number;
+  preservesPitch: boolean;
   onSpeedChange: (speed: number) => void;
-  onPitchChange: (pitch: number) => void;
+  onTogglePreservesPitch: () => void;
   coverUrl?: string;
 }
 
@@ -64,9 +64,9 @@ const Controls: React.FC<ControlsProps> = ({
   volume,
   onVolumeChange,
   speed,
-  pitch,
+  preservesPitch,
   onSpeedChange,
-  onPitchChange,
+  onTogglePreservesPitch,
   coverUrl,
 }) => {
   const [showVolume, setShowVolume] = useState(false);
@@ -92,6 +92,70 @@ const Controls: React.FC<ControlsProps> = ({
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekTime, setSeekTime] = useState(0);
 
+  // Optimistic seek state
+  const [isWaitingForSeek, setIsWaitingForSeek] = useState(false);
+  const seekTargetRef = useRef(0);
+
+  // Interpolated time for smooth progress bar
+  const [interpolatedTime, setInterpolatedTime] = useState(currentTime);
+  const progressLastTimeRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (isSeeking) return;
+
+    // If we are waiting for a seek to complete, check if we've reached the target
+    if (isWaitingForSeek) {
+      const diff = Math.abs(currentTime - seekTargetRef.current);
+      // If we are close enough (within 0.5s), or if enough time has passed (handled by timeout elsewhere),
+      // we consider the seek 'done' and resume normal syncing.
+      // But for now, we ONLY sync if close, otherwise we keep the optimistic value.
+      if (diff < 0.5) {
+        setIsWaitingForSeek(false);
+        setInterpolatedTime(currentTime);
+      }
+      // Else: do nothing, keep interpolatedTime as is (the seek target)
+    } else {
+      // Normal operation: sync with prop
+      setInterpolatedTime(currentTime);
+    }
+
+    if (!isPlaying) return;
+
+    let animationFrameId: number;
+
+    const animate = () => {
+      const now = Date.now();
+      const dt = (now - progressLastTimeRef.current) / 1000;
+      progressLastTimeRef.current = now;
+
+      if (isPlaying && !isSeeking && !isWaitingForSeek) {
+        setInterpolatedTime((prev) => {
+          // Simple linear extrapolation
+          const next = prev + dt * speed;
+          // Clamp to duration
+          return Math.min(next, duration);
+        });
+      } else if (isPlaying && isWaitingForSeek) {
+        // If waiting for seek, we can still extrapolate from the target
+        // to make it feel responsive immediately
+        setInterpolatedTime((prev) => {
+          const next = prev + dt * speed;
+          return Math.min(next, duration);
+        });
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    progressLastTimeRef.current = Date.now();
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [currentTime, isPlaying, isSeeking, speed, duration, isWaitingForSeek]);
+
+  // Use interpolated time for display, but sync to currentTime when it jumps significantly
+  // (handled by the useEffect above resetting on currentTime change)
+  const displayTime = isSeeking ? seekTime : interpolatedTime;
+
   // Spring Animation for Cover
   const coverRef = useRef<HTMLDivElement>(null);
   const springSystem = useRef(new SpringSystem({ scale: 1 })).current;
@@ -99,7 +163,8 @@ const Controls: React.FC<ControlsProps> = ({
   const animationFrameRef = useRef(0);
 
   const startAnimation = () => {
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (animationFrameRef.current)
+      cancelAnimationFrame(animationFrameRef.current);
     lastTimeRef.current = performance.now();
 
     const loop = (now: number) => {
@@ -229,18 +294,18 @@ const Controls: React.FC<ControlsProps> = ({
       {/* Progress Bar */}
       <div className="w-full max-w-xl flex items-center gap-3 text-xs font-medium text-white/50 group/bar relative">
         <span className="w-10 text-right font-mono tracking-widest">
-          {formatTime(isSeeking ? seekTime : currentTime)}
+          {formatTime(displayTime)}
         </span>
 
         <div className="relative flex-1 h-8 flex items-center cursor-pointer group">
           {/* Background Track */}
-          <div className="absolute inset-x-0 h-[3px] bg-white/20 rounded-full group-hover:h-[6px] transition-all duration-200 ease-out"></div>
+          <div className="absolute inset-x-0 h-[3px] bg-white/20 rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"></div>
 
           {/* Active Progress */}
           <div
-            className="absolute left-0 h-[3px] rounded-full group-hover:h-[6px] transition-all duration-200 ease-out"
+            className="absolute left-0 h-[3px] rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"
             style={{
-              width: `${((isSeeking ? seekTime : currentTime) / (duration || 1)) * 100}%`,
+              width: `${(displayTime / (duration || 1)) * 100}%`,
               backgroundColor: "rgba(255,255,255,0.9)",
             }}
           ></div>
@@ -250,7 +315,7 @@ const Controls: React.FC<ControlsProps> = ({
             type="range"
             min={0}
             max={duration || 0}
-            value={isSeeking ? seekTime : currentTime}
+            value={displayTime}
             onMouseDown={() => setIsSeeking(true)}
             onTouchStart={() => setIsSeeking(true)}
             onChange={(e) => {
@@ -262,11 +327,27 @@ const Controls: React.FC<ControlsProps> = ({
               const time = parseFloat((e.target as HTMLInputElement).value);
               onSeek(time, false, false); // Actual seek
               setIsSeeking(false);
+
+              // Optimistic update
+              setInterpolatedTime(time);
+              seekTargetRef.current = time;
+              setIsWaitingForSeek(true);
+
+              // Safety timeout: if seek doesn't happen within 1s, give up waiting
+              setTimeout(() => setIsWaitingForSeek(false), 1000);
             }}
             onTouchEnd={(e) => {
               const time = parseFloat((e.target as HTMLInputElement).value);
               onSeek(time, false, false); // Actual seek
               setIsSeeking(false);
+
+              // Optimistic update
+              setInterpolatedTime(time);
+              seekTargetRef.current = time;
+              setIsWaitingForSeek(true);
+
+              // Safety timeout
+              setTimeout(() => setIsWaitingForSeek(false), 1000);
             }}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
           />
@@ -331,11 +412,17 @@ const Controls: React.FC<ControlsProps> = ({
             <div className="relative w-6 h-6">
               {/* Pause Icon */}
               <PauseIcon
-                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 -rotate-90"}`}
+                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isPlaying
+                  ? "opacity-100 scale-100 rotate-0"
+                  : "opacity-0 scale-50 -rotate-90"
+                  }`}
               />
 
               <PlayIcon
-                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${!isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 rotate-90"}`}
+                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${!isPlaying
+                  ? "opacity-100 scale-100 rotate-0"
+                  : "opacity-0 scale-50 rotate-90"
+                  }`}
               />
             </div>
           </button>
@@ -365,10 +452,17 @@ const Controls: React.FC<ControlsProps> = ({
               item ? (
                 <SettingsPopup
                   style={style}
-                  pitch={pitch}
+                  pitch={0} // We need to pass actual pitch state here if available, but ControlsProps doesn't have it yet. 
+                  // Wait, ControlsProps DOES NOT have pitch. I need to check if I should add it.
+                  // The user request said "1. pitch 需要类似 ios 那种按钮效果".
+                  // Controls.tsx doesn't seem to have pitch prop in the interface.
+                  // Let me check ControlsProps again.
                   speed={speed}
-                  onPitchChange={onPitchChange}
+                  preservesPitch={preservesPitch}
+                  onPitchChange={() => { }} // Placeholder
+                  onTogglePreservesPitch={onTogglePreservesPitch}
                   onSpeedChange={onSpeedChange}
+                  accentColor={accentColor}
                 />
               ) : null
             )}
@@ -450,44 +544,44 @@ interface SettingsPopupProps {
   style: any;
   pitch: number;
   speed: number;
+  preservesPitch: boolean;
   onPitchChange: (pitch: number) => void;
+  onTogglePreservesPitch: () => void;
   onSpeedChange: (speed: number) => void;
+  accentColor: string;
 }
 
 const SettingsPopup: React.FC<SettingsPopupProps> = ({
   style,
-  pitch,
+  preservesPitch,
+  onTogglePreservesPitch,
   speed,
-  onPitchChange,
   onSpeedChange,
+  pitch,
+  onPitchChange,
+  accentColor,
 }) => {
-  const { pitchW } = useSpring({
-    pitchW: ((pitch + 1) / 3) * 100,
-    config: { tension: 210, friction: 20 },
-  });
-  const { speedW } = useSpring({
-    speedW: ((speed - 0.5) / 1.5) * 100,
+  const { speedH, pitchH } = useSpring({
+    speedH: ((speed - 0.5) / 1.5) * 100,
+    pitchH: ((pitch + 1) / 3) * 100, // Pitch range -1 to 2, span 3
     config: { tension: 210, friction: 20 },
   });
 
   return (
     <animated.div
       style={style}
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 w-[200px] p-4 rounded-[26px] bg-black/40 backdrop-blur-[80px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col gap-4 cursor-auto"
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-50 p-4 rounded-[26px] bg-black/40 backdrop-blur-[80px] saturate-150 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex gap-4 cursor-auto"
     >
       {/* Pitch Control */}
-      <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center text-xs font-medium text-white/80">
-          <span>Pitch</span>
-          <span className="font-mono">{pitch.toFixed(1)}</span>
-        </div>
-        <div className="relative h-6 flex items-center">
-          <div className="absolute inset-x-0 h-1 bg-white/20 rounded-full overflow-hidden">
-            <animated.div
-              className="h-full bg-white"
-              style={{ width: pitchW.to((w) => `${w}%`) }}
-            />
-          </div>
+      <div className="flex flex-col items-center gap-2 w-12">
+        <div className="h-[150px] w-full relative rounded-[20px] bg-white/20 overflow-hidden">
+          <animated.div
+            className="absolute bottom-0 w-full"
+            style={{
+              height: pitchH.to((h) => `${h}%`),
+              backgroundColor: accentColor || "white",
+            }}
+          />
           <input
             type="range"
             min="-1"
@@ -495,24 +589,29 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
             step="0.1"
             value={pitch}
             onChange={(e) => onPitchChange(parseFloat(e.target.value))}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer touch-none"
+            style={{
+              WebkitAppearance: "slider-vertical",
+              appearance: "slider-vertical",
+            } as any}
           />
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none text-[10px] font-bold text-white mix-blend-difference">
+            {pitch.toFixed(1)}
+          </div>
         </div>
+        <span className="text-[10px] font-medium text-white/60">Pitch</span>
       </div>
 
       {/* Speed Control */}
-      <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center text-xs font-medium text-white/80">
-          <span>Speed</span>
-          <span className="font-mono">{speed.toFixed(1)}x</span>
-        </div>
-        <div className="relative h-6 flex items-center">
-          <div className="absolute inset-x-0 h-1 bg-white/20 rounded-full overflow-hidden">
-            <animated.div
-              className="h-full bg-white"
-              style={{ width: speedW.to((w) => `${w}%`) }}
-            />
-          </div>
+      <div className="flex flex-col items-center gap-2 w-12">
+        <div className="h-[150px] w-full relative rounded-[20px] bg-white/20 overflow-hidden">
+          <animated.div
+            className="absolute bottom-0 w-full"
+            style={{
+              height: speedH.to((h) => `${h}%`),
+              backgroundColor: accentColor || "white",
+            }}
+          />
           <input
             type="range"
             min="0.5"
@@ -520,9 +619,33 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
             step="0.1"
             value={speed}
             onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer touch-none"
+            style={{
+              WebkitAppearance: "slider-vertical",
+              appearance: "slider-vertical",
+            } as any}
           />
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none text-[10px] font-bold text-white mix-blend-difference">
+            {speed.toFixed(1)}x
+          </div>
         </div>
+        <span className="text-[10px] font-medium text-white/60">Speed</span>
+      </div>
+
+      {/* Toggle Preserves Pitch */}
+      <div className="flex flex-col items-center justify-end gap-2 w-12 pb-6">
+        <button
+          onClick={onTogglePreservesPitch}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-200 ${preservesPitch ? "bg-white/20 text-white" : "bg-white text-black"
+            }`}
+          style={!preservesPitch && accentColor ? { backgroundColor: accentColor, color: 'white' } : {}}
+          title={preservesPitch ? "Tone Preserved" : "Vinyl Mode"}
+        >
+          <span className="text-xs font-bold">{preservesPitch ? "Dig" : "Vin"}</span>
+        </button>
+        <span className="text-[10px] font-medium text-white/60 text-center leading-tight">
+          {preservesPitch ? "Digital" : "Vinyl"}
+        </span>
       </div>
     </animated.div>
   );

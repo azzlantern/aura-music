@@ -69,6 +69,14 @@ export const FUTURE_SPRING: SpringConfig = {
     precision: 0.1
 };
 
+// Camera Spring: Smooth global scrolling
+export const CAMERA_SPRING: SpringConfig = {
+    mass: 1,
+    stiffness: 100, // Smooth but responsive
+    damping: 25,
+    precision: 0.1
+};
+
 export class SpringSystem {
     private current: Record<string, number> = {};
     private target: Record<string, number> = {};

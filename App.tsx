@@ -251,9 +251,9 @@ const App: React.FC = () => {
           volume={volume}
           onVolumeChange={setVolume}
           speed={player.speed}
-          pitch={player.pitch}
+          preservesPitch={player.preservesPitch}
           onSpeedChange={player.setSpeed}
-          onPitchChange={player.setPitch}
+          onTogglePreservesPitch={player.togglePreservesPitch}
           coverUrl={currentSong?.coverUrl}
         />
 
@@ -275,6 +275,7 @@ const App: React.FC = () => {
   const lyricsSection = (
     <div className="w-full h-full relative z-20 flex flex-col justify-center px-4 lg:pl-12">
       <LyricsView
+        key={currentSong?.id}
         lyrics={currentSong?.lyrics || []}
         audioRef={audioRef}
         isPlaying={playState === PlayState.PLAYING}

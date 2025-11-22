@@ -37,7 +37,6 @@ export const usePlayer = ({
   const [playMode, setPlayMode] = useState<PlayMode>(PlayMode.LOOP_ALL);
   const [matchStatus, setMatchStatus] = useState<MatchStatus>("idle");
   const audioRef = useRef<HTMLAudioElement>(null);
-  const animationFrameRef = useRef<number>(0);
   const isSeeking = useRef(false);
 
   const currentSong = queue[currentIndex] ?? null;
@@ -358,60 +357,51 @@ export const usePlayer = ({
   }, [queue, currentIndex]);
 
   const [speed, setSpeed] = useState(1);
-  const [pitch, setPitch] = useState(0);
+  const [preservesPitch, setPreservesPitch] = useState(true);
 
   const handleSetSpeed = useCallback((newSpeed: number) => {
     setSpeed(newSpeed);
-    setPitch(0);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = newSpeed;
-      audioRef.current.preservesPitch = true;
-    }
   }, []);
 
-  const handleSetPitch = useCallback((newPitch: number) => {
-    setPitch(newPitch);
-    // Do not update speed state here to avoid UI coupling
-    if (audioRef.current) {
-      const newRate = Math.pow(2, newPitch);
-      audioRef.current.playbackRate = newRate;
-      audioRef.current.preservesPitch = false;
-    }
+  const handleTogglePreservesPitch = useCallback(() => {
+    setPreservesPitch((prev) => !prev);
   }, []);
 
   // Ensure playback rate is applied when song changes or play state changes
   useEffect(() => {
     if (audioRef.current) {
-      // If pitch is non-zero, we are in pitch mode (preservesPitch = false)
-      // Otherwise we are in speed mode (preservesPitch = true)
-      const isPitchMode = pitch !== 0;
-      audioRef.current.preservesPitch = !isPitchMode;
-
-      if (isPitchMode) {
-        audioRef.current.playbackRate = Math.pow(2, pitch);
-      } else {
-        audioRef.current.playbackRate = speed;
-      }
+      audioRef.current.preservesPitch = preservesPitch;
+      audioRef.current.playbackRate = speed;
     }
-  }, [currentSong, playState, speed, pitch]);
+  }, [currentSong, playState, speed, preservesPitch]);
 
-  // Smooth progress update using requestAnimationFrame
   useEffect(() => {
-    const updateProgress = () => {
-      if (audioRef.current && !isSeeking.current && playState === PlayState.PLAYING) {
-        setCurrentTime(audioRef.current.currentTime);
+    let frameId: number | null = null;
+
+    const tick = () => {
+      if (audioRef.current && !isSeeking.current) {
+        const audioTime = audioRef.current.currentTime;
+        setCurrentTime((prev) => {
+          if (Math.abs(prev - audioTime) < 0.0005) {
+            return prev;
+          }
+          return audioTime;
+        });
       }
-      animationFrameRef.current = requestAnimationFrame(updateProgress);
+      frameId = requestAnimationFrame(tick);
     };
 
-    animationFrameRef.current = requestAnimationFrame(updateProgress);
+    if (playState === PlayState.PLAYING) {
+      frameId = requestAnimationFrame(tick);
+    }
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
       }
     };
   }, [playState]);
+
 
   return {
     audioRef,
@@ -424,7 +414,7 @@ export const usePlayer = ({
     matchStatus,
     accentColor,
     speed,
-    pitch,
+    preservesPitch,
     togglePlay,
     toggleMode,
     handleSeek,
@@ -438,6 +428,8 @@ export const usePlayer = ({
     addSongAndPlay,
     handleAudioEnded,
     setSpeed: handleSetSpeed,
-    setPitch: handleSetPitch,
+    togglePreservesPitch: handleTogglePreservesPitch,
+    pitch: 0, // Default pitch
+    setPitch: (pitch: number) => { }, // Placeholder
   };
 };

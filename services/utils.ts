@@ -120,10 +120,15 @@ const metadataIndicators = [
   "编曲",
   "制作",
   "词曲",
+  "by:", // Common LRC metadata
+  "offset:",
 ];
 
 const isMetadataLine = (text: string): boolean => {
   if (!text) return false;
+  // Check for Netease JSON metadata lines first
+  if (text.trim().startsWith("{") && text.trim().endsWith("}")) return true;
+
   const normalized = text.replace(/\s+/g, "");
   return metadataIndicators.some((indicator) =>
     normalized.toLowerCase().includes(indicator.toLowerCase()),
@@ -218,7 +223,7 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
             words: [],
             tagCount: 0, // Low priority, treat as standard line
             originalIndex: index,
-            isMetadata: isMetadataLine(text),
+            isMetadata: true, // Treat JSON lines as metadata to avoid clutter
           });
           return;
         }
@@ -289,10 +294,12 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
   rawEntries.sort((a, b) => {
     const diff = a.time - b.time;
     if (Math.abs(diff) > 0.01) return diff;
+    // Stable sort fallback: use original line index
     return a.originalIndex - b.originalIndex;
   });
 
-  const result: LyricLine[] = [];
+  // Intermediate result that holds the original index for final stable sorting
+  const tempResult: (LyricLine & { _originalIndex: number })[] = [];
   const hasYrc = rawEntries.some((e) => e.tagCount >= 1000);
 
   if (hasYrc) {
@@ -310,6 +317,9 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
 
     // Assign translation lines to the closest YRC line within a threshold
     otherLines.forEach((line) => {
+      // SKIP Metadata lines here - they shouldn't be orphans or translations
+      if (line.isMetadata) return;
+
       let closestIndex = -1;
       let minDiff = Infinity;
 
@@ -322,13 +332,14 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
       });
 
       // Tolerance: 3.0s. Relaxed to accommodate larger drifts in Netease data.
-      if (closestIndex !== -1 && minDiff < 3.0 && !line.isMetadata) {
+      if (closestIndex !== -1 && minDiff < 3.0) {
         const translationText = getEntryDisplayText(line);
         if (translationText.length > 0) {
           buckets[closestIndex].translations.push(translationText);
           return;
         }
       }
+      // If not matched as translation, keep it as orphan
       orphans.push(line);
     });
 
@@ -343,30 +354,42 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
             t.length > 0 &&
             (!normalizedMain || t.toLowerCase() !== normalizedMain),
         );
-      result.push({
-        time: b.main.time,
-        text: mainText || b.main.text,
-        words:
-          b.main.words && b.main.words.length > 0 ? b.main.words : undefined,
-        translation:
-          translations.length > 0 ? translations.join("\n") : undefined,
-        isPreciseTiming: true,
-      });
+
+      if (!b.main.isMetadata) {
+        tempResult.push({
+          time: b.main.time,
+          text: mainText || b.main.text,
+          words:
+            b.main.words && b.main.words.length > 0 ? b.main.words : undefined,
+          translation:
+            translations.length > 0 ? translations.join("\n") : undefined,
+          isPreciseTiming: true,
+          _originalIndex: b.main.originalIndex,
+        });
+      }
     });
 
-    // Append orphans (e.g. metadata lines or unmatched lines)
+    // Append orphans (Filter out metadata again to be safe)
     orphans.forEach((o) => {
+      if (o.isMetadata) return;
+
       const orphanText = getEntryDisplayText(o);
-      result.push({
+      tempResult.push({
         time: o.time,
         text: orphanText || o.text,
         words: o.words && o.words.length > 0 ? o.words : undefined,
         isPreciseTiming: false,
+        _originalIndex: o.originalIndex,
       });
     });
 
-    // Re-sort the final result to ensure correct order
-    result.sort((a, b) => a.time - b.time);
+    // Re-sort the final result to ensure correct order, using _originalIndex for stability
+    // IMPORTANT: Stable sort is critical here to prevent index jumping
+    tempResult.sort((a, b) => {
+      const diff = a.time - b.time;
+      if (Math.abs(diff) > 0.001) return diff;
+      return a._originalIndex - b._originalIndex;
+    });
   } else {
     // 3. Group lines with same time (Standard LRC logic)
     let i = 0;
@@ -397,6 +420,12 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
         group.find((entry) => hasMeaningfulContent(entry)) ??
         group[0];
 
+      // Skip if it's purely metadata line and we want to filter it
+      if (main.isMetadata) {
+        i = j;
+        continue;
+      }
+
       const resolvedMainText = getEntryDisplayText(main) || main.text || "";
       const normalizedMain = resolvedMainText
         ? resolvedMainText.toLowerCase()
@@ -414,26 +443,31 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
         translationParts.length > 0 ? translationParts.join("\n") : undefined;
       const isPrecise = main.tagCount >= 1000;
 
-      result.push({
+      tempResult.push({
         time: main.time,
         text: resolvedMainText,
         words: main.words && main.words.length > 0 ? main.words : undefined,
         translation,
         isPreciseTiming: isPrecise,
+        _originalIndex: main.originalIndex,
       });
 
       i = j;
     }
   }
 
-  // 4. Fix word end times (Only for lines without explicit word timing)
-  for (let k = 0; k < result.length; k++) {
-    const line = result[k];
+  // 4. Fix word end times and cleanup
+  const finalResult: LyricLine[] = tempResult.map(
+    ({ _originalIndex, ...rest }) => rest,
+  );
+
+  for (let k = 0; k < finalResult.length; k++) {
+    const line = finalResult[k];
 
     // Skip auto-fixing if we have precise timing from YRC
     if (line.isPreciseTiming) continue;
 
-    const nextLineTime = result[k + 1]?.time ?? line.time + 5;
+    const nextLineTime = finalResult[k + 1]?.time ?? line.time + 5;
 
     if (line.words && line.words.length > 0) {
       for (let w = 0; w < line.words.length; w++) {
@@ -445,7 +479,7 @@ const parseSingleLrc = (lrcContent: string): LyricLine[] => {
     }
   }
 
-  return result;
+  return finalResult;
 };
 
 const normalizeTimeKey = (time: number): number => {
@@ -513,6 +547,29 @@ const buildTranslationMap = (
   return map;
 };
 
+// Pre-process lyrics to fill in "endTime" for lines to aid lookahead
+export const processLyricsDurations = (lyrics: LyricLine[]): LyricLine[] => {
+  return lyrics.map((line, i) => {
+    const nextLine = lyrics[i + 1];
+    // If explicit precise timing is available (from words), use that
+    // Otherwise default to next line's time
+    let endTime = nextLine ? nextLine.time : line.time + 5;
+
+    // If YRC data exists, the last word's end time is a good indicator
+    if (line.words && line.words.length > 0) {
+      const lastWord = line.words[line.words.length - 1];
+      if (lastWord.endTime > line.time) {
+        endTime = lastWord.endTime;
+      }
+    }
+
+    // Ensure duration isn't 0 or negative
+    if (endTime <= line.time) endTime = line.time + 3;
+
+    return { ...line, _endTime: endTime } as any; // Attach temp property
+  });
+};
+
 export const parseLrc = (
   lrcContent: string,
   translationContent?: string,
@@ -561,7 +618,7 @@ export const parseLrc = (
     return undefined;
   };
 
-  return baseLines.map((line) => {
+  const merged = baseLines.map((line) => {
     const external = takeTranslationForLine(line);
     const trimmedExternal = external?.trim();
     const finalTranslation =
@@ -578,6 +635,8 @@ export const parseLrc = (
       translation: finalTranslation,
     };
   });
+
+  return processLyricsDurations(merged);
 };
 
 export const mergeLyrics = (original: string, translation: string): string => {
@@ -656,19 +715,6 @@ export const parseAudioMetadata = (
 };
 
 export const extractColors = async (imageSrc: string): Promise<string[]> => {
-  // Keep colors vibrant but avoid too-bright picks that would hide white lyrics.
-  const capBrightness = (rgb: number[]): number[] => {
-    const lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-    const maxLum = 230; // Empirically keep enough contrast against white text
-    if (lum <= maxLum) return rgb;
-    const factor = maxLum / lum;
-    return [
-      Math.round(rgb[0] * factor),
-      Math.round(rgb[1] * factor),
-      Math.round(rgb[2] * factor),
-    ];
-  };
-
   return new Promise((resolve) => {
     if (typeof ColorThief === "undefined") {
       console.warn("ColorThief not loaded");
@@ -714,8 +760,7 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
         const topColors = candidates.slice(0, 4);
 
         const colorStrings = topColors.map((c: number[]) => {
-          const adjusted = capBrightness(c);
-          return `rgb(${adjusted[0]}, ${adjusted[1]}, ${adjusted[2]})`;
+          return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
         });
         resolve(colorStrings);
       } catch (e) {
