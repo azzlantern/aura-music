@@ -265,10 +265,10 @@ export class LyricLine implements ILyricLine {
       font: string,
       mainHeight: number
   ) {
-      const MAX_LIFT = -4.0;
-      const SLOPE_STEEPNESS = 0.025;
-      const LOOKAHEAD_PX = 40;
-      const WAVE_EXTENT = 250;
+      const MAX_LIFT = -3.0;
+      const SLOPE_STEEPNESS = 0.015;
+      const LOOKAHEAD_PX = 10;
+      const WAVE_EXTENT = 350;
       const effectiveCursor = cursorX + LOOKAHEAD_PX;
       
       const lineW = this.layout!.textWidth + 50;

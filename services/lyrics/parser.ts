@@ -87,7 +87,7 @@ export const normalizeText = (text?: string): string => {
         .toLowerCase()
         .replace(/['`´‘’＇]/g, "")
         .replace(/\s+/g, "")
-        .replace(/[.,!?，。！？:;""\[\]()\-_/\\…]/g, "");
+        .replace(/[.,!?，。！？:;""\[\]()\-_/\\…（）【】「」]/g, "");
 };
 
 /**
