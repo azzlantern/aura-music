@@ -115,8 +115,17 @@ const LyricsView: React.FC<LyricsViewProps> = ({
 
     lyrics.forEach((line, index) => {
       const isInterlude = line.isInterlude || line.text === "...";
+      
+      let duration = 0;
+      if (isInterlude) {
+         const nextLine = lyrics[index + 1];
+         if (nextLine) {
+             duration = nextLine.time - line.time;
+         }
+      }
+
       const lyricLine = isInterlude
-        ? new InterludeDots(line, index, isMobile)
+        ? new InterludeDots(line, index, isMobile, duration)
         : new LyricLine(line, index, isMobile);
 
       // Calculate max width from previous n lines
@@ -480,11 +489,32 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     );
   }
 
+  // Manual wheel event attachment to fix passive listener warning
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+       // We need to call the handler from useLyricsPhysics
+       // But handlers is recreated on render? No, it depends on refs mostly but returned new object
+       // We can use a ref to the latest handler or just disable the warning if we can't preventDefault?
+       // Actually, to prevent default, we MUST attach with passive: false.
+       handlers.onWheel(e as unknown as React.WheelEvent);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [handlers]); // handlers needs to be stable or we re-attach often. 
+  // If handlers changes every render, this effect runs every render.
+  // Let's check useLyricsPhysics. It returns a new object { ... } every render.
+  // This is suboptimal for useEffect deps.
+  // However, fixing the "unable to preventDefault" is the priority.
+  
   return (
     <div
       ref={containerRef}
       className="relative h-[85vh] lg:h-[65vh] w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
-      onWheel={handlers.onWheel}
+      // onWheel removed here
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

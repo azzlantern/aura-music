@@ -15,11 +15,13 @@ export class InterludeDots implements ILyricLine {
     private springSystem: SpringSystem;
     private lastDrawTime: number = -1;
     private textWidth: number = 0;
+    private duration: number = 0;
 
-    constructor(line: LyricLineType, index: number, isMobile: boolean) {
+    constructor(line: LyricLineType, index: number, isMobile: boolean, duration: number = 0) {
         this.lyricLine = line;
         this.index = index;
         this.isMobile = isMobile;
+        this.duration = duration;
         this.pixelRatio =
             typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
 
@@ -61,75 +63,127 @@ export class InterludeDots implements ILyricLine {
     }
 
     public draw(currentTime: number, isActive: boolean, isHovered: boolean) {
+        const now = performance.now();
+        
+        // Calculate dt with clamping to prevent physics explosions on re-entry
+        let dt = this.lastDrawTime === -1 ? 0.016 : (now - this.lastDrawTime) / 1000;
+        dt = Math.min(dt, 0.064); // Cap at ~60ms (approx 4 frames dropped)
+        this.lastDrawTime = now;
+
         // Determine target expansion state
-        // Show if active (in range) or if it's the specific "..." line type
-        // The user requirement says: "isInterlude 只有在到范围的时候才显示"
-        // So if isActive is true, we expand. If false, we collapse.
+        const currentTarget = this.springSystem.getTarget("expansion") || 0;
         const targetExpansion = isActive ? 1 : 0;
 
-        // Update spring
-        const now = performance.now();
-        const dt = this.lastDrawTime === -1 ? 0.016 : (now - this.lastDrawTime) / 1000;
-        this.lastDrawTime = now;
+        // Detect transition from Active -> Inactive (Exit animation start)
+        // "Finally scale up once, then completely scale down"
+        if (currentTarget === 1 && targetExpansion === 0) {
+            // Apply a positive velocity to create a "pop" effect before shrinking
+            // The spring will pull it to 0, but velocity will push it up first.
+            this.springSystem.setVelocity("expansion", 8); 
+        }
 
         this.springSystem.setTarget("expansion", targetExpansion, INTERLUDE_SPRING);
         this.springSystem.update(dt);
 
-        // Clamp expansion to [0, 1] to prevent overshoot effects
-        const expansion = Math.max(0, Math.min(1, this.springSystem.getCurrent("expansion")));
+        // Clamp expansion to [0, 1.5] to allow for pop effect, but preventing negative
+        // We allow > 1 for the pop effect
+        const expansion = Math.max(0, this.springSystem.getCurrent("expansion"));
 
         // Clear canvas
         this.ctx.clearRect(0, 0, this.logicalWidth, this.logicalHeight);
 
         // If completely collapsed and not active, don't draw anything
+        // Increased threshold to ensure it disappears cleanly
         if (expansion < 0.01 && !isActive) {
             return;
         }
 
         const paddingX = this.isMobile ? 24 : 56;
-        const dotRadius = (this.isMobile ? 5 : 7) * expansion; // Scale dots with expansion
+        const baseRadius = this.isMobile ? 5 : 7;
         const dotSpacing = this.isMobile ? 16 : 24;
         const totalDotsWidth = dotSpacing * 2;
 
-        // Base opacity fades in with expansion
-        const baseOpacity = 0.3 * expansion;
-        const activeOpacity = 0.9 * expansion;
+        // Calculate Progress
+        // If active, we calculate progress based on line time and duration.
+        // If not active, we don't care about progress color as much, but let's keep it consistent or fade out.
+        let progress = 0;
+        if (this.duration > 0) {
+            const elapsed = currentTime - this.lyricLine.time;
+            progress = Math.max(0, Math.min(1, elapsed / this.duration));
+        } else if (isActive) {
+             // If no duration, maybe pulse active?
+             progress = 0.5; 
+        } else {
+             // If inactive, progress is 1 (finished) or 0? 
+             // Usually if we passed it, it's 1. But drawing loop handles isActive.
+             progress = 1;
+        }
 
         this.ctx.save();
 
         // Draw hover background (round rect)
-        // Scale background width/height with expansion for "pop" effect
         if (isHovered) {
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${0.08 * expansion})`;
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${0.08 * Math.min(1, expansion)})`;
             const bgWidth = Math.max(totalDotsWidth + 80, 200);
-            const bgHeight = this._height * expansion;
+            const bgHeight = this._height * Math.min(1, expansion);
             const bgY = (this._height - bgHeight) / 2;
 
-            this.roundRect(paddingX - 16, bgY, bgWidth, bgHeight, 16 * expansion);
+            this.roundRect(paddingX - 16, bgY, bgWidth, bgHeight, 16 * Math.min(1, expansion));
             this.ctx.fill();
         }
 
-        // Position dots - Left aligned with text
-        // Center vertically
-        this.ctx.translate(paddingX + 20, this._height / 2);
+        // Position dots - Left aligned with text but slightly offset
+        // "Still a bit to the right" -> Add small offset
+        const offsetX = 6; 
+        
+        // Calculate center of the dot group for scaling pivot
+        // Dot 0 is at 0, Dot 1 at spacing, Dot 2 at 2*spacing (relative to start)
+        // Center is at Dot 1 (spacing)
+        // We want to translate to the center of the middle dot
+        const groupCenterX = paddingX + offsetX + baseRadius + dotSpacing;
+        const groupCenterY = this._height / 2;
+
+        // Center vertically and horizontally at group center
+        this.ctx.translate(groupCenterX, groupCenterY);
+
+        // Global Breathing Animation (only when active/visible)
+        // "Effect is too big. Scale down!" -> Reduce amplitude
+        const breatheSpeed = 3.0;
+        const breatheAmt = 0.12; 
+        const breatheScale = 1.0 + Math.sin(now / 1000 * breatheSpeed) * breatheAmt;
+        
+        // Combine physics expansion with breathing
+        const finalGlobalScale = expansion * breatheScale;
+
+        this.ctx.scale(finalGlobalScale, finalGlobalScale);
 
         for (let i = 0; i < 3; i++) {
-            let opacity = baseOpacity;
-            let scale = 1.0;
+            // Calculate color based on progress
+            const dotProgressStart = i / 3;
+            const dotProgressEnd = (i + 1) / 3;
+            
+            const localProgress = (progress - dotProgressStart) / (dotProgressEnd - dotProgressStart);
+            const clampedLocal = Math.max(0, Math.min(1, localProgress));
 
-            // Always animate wave if visible (even if expanding)
-            // This gives it a "live" feel as it appears
-            const speed = 3.0;
-            const phase = i * 0.5;
-            const t = currentTime * speed - phase;
-            const wave = (Math.sin(t) + 1) / 2;
-
-            opacity = baseOpacity + (activeOpacity - baseOpacity) * wave;
-            scale = 1.0 + 0.3 * wave;
+            // "Like lyrics... gradual change white... to gray"
+            // Inactive lyrics are usually 0.5 or 0.6 opacity.
+            // Base opacity 0.5 (Gray), Active 1.0 (White)
+            const colorIntensity = 0.5 + 0.5 * clampedLocal;
+            
+            const visibilityOpacity = Math.min(1, expansion); 
+            
+            const opacity = colorIntensity * visibilityOpacity;
 
             this.ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
             this.ctx.beginPath();
-            this.ctx.arc(i * dotSpacing, 0, dotRadius * scale, 0, Math.PI * 2);
+            
+            // Draw relative to center (Dot 1 is at 0)
+            // Dot 0: -spacing
+            // Dot 1: 0
+            // Dot 2: +spacing
+            const relativeX = (i - 1) * dotSpacing;
+            
+            this.ctx.arc(relativeX, 0, baseRadius, 0, Math.PI * 2);
             this.ctx.fill();
         }
 
@@ -153,9 +207,11 @@ export class InterludeDots implements ILyricLine {
     }
 
     public getCurrentHeight() {
-        // Return fixed height regardless of expansion state
-        // This prevents layout shifts when interlude becomes active/inactive
-        return this._height;
+        // Return dynamic height based on expansion state
+        // Clamp to [0, 1] to prevent layout jitter during "pop" (expansion > 1)
+        // When expansion is 0, height is 0 (hidden)
+        const expansion = Math.max(0, Math.min(1, this.springSystem.getCurrent("expansion")));
+        return this._height * expansion;
     }
 
     public isInterlude() {

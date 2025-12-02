@@ -119,6 +119,10 @@ export class SpringSystem {
     return this.current[key] || 0;
   }
 
+  getTarget(key: string): number {
+    return this.target[key] || 0;
+  }
+
   getVelocity(key: string): number {
     return this.velocity[key] || 0;
   }
