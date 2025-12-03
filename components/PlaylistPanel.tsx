@@ -5,6 +5,7 @@ import { Song } from '../types';
 import { CheckIcon, PlusIcon, QueueIcon, TrashIcon, SelectAllIcon } from './Icons';
 import { useKeyboardScope } from '../hooks/useKeyboardScope';
 import ImportMusicDialog from './ImportMusicDialog';
+import SmartImage from './SmartImage';
 
 const IOS_SCROLLBAR_STYLES = `
   .playlist-scrollbar {
@@ -316,10 +317,15 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                             {/* Cover & Indicator */}
                                             <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800 border border-white/5 shadow-sm">
                                                 {song.coverUrl ? (
-                                                    <img src={song.coverUrl} alt="" className={`w-full h-full object-cover transition-opacity duration-300 ${isCurrent && !isEditing ? 'opacity-40 blur-[1px]' : ''}`} />
+                                                    <SmartImage
+                                                        src={song.coverUrl}
+                                                        alt={song.title}
+                                                        containerClassName="w-full h-full"
+                                                        imgClassName={`w-full h-full object-cover transition-opacity duration-300 ${isCurrent && !isEditing ? 'opacity-40 blur-[1px]' : ''}`}
+                                                    />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
-                                                )}
+                                               )}
 
                                                 {/* Redesigned Now Playing Indicator (Equalizer) */}
                                                 {isCurrent && !isEditing && (

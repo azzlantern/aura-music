@@ -13,6 +13,7 @@ import {
   fetchLyricsById,
   searchAndMatchLyrics,
 } from "../services/lyricsService";
+import { audioResourceCache } from "../services/cache";
 
 type MatchStatus = "idle" | "matching" | "success" | "failed";
 
@@ -464,6 +465,7 @@ export const usePlayer = ({
 
   const [speed, setSpeed] = useState(1);
   const [preservesPitch, setPreservesPitch] = useState(true);
+  const [resolvedAudioSrc, setResolvedAudioSrc] = useState<string | null>(null);
 
   const handleSetSpeed = useCallback((newSpeed: number) => {
     setSpeed(newSpeed);
@@ -480,6 +482,73 @@ export const usePlayer = ({
       audioRef.current.playbackRate = speed;
     }
   }, [currentSong, playState, speed, preservesPitch]);
+
+  useEffect(() => {
+    let canceled = false;
+    let currentObjectUrl: string | null = null;
+
+    const releaseObjectUrl = () => {
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+    };
+
+    if (!currentSong?.fileUrl) {
+      setResolvedAudioSrc(null);
+      return () => {
+        releaseObjectUrl();
+      };
+    }
+
+    const fileUrl = currentSong.fileUrl;
+
+    if (fileUrl.startsWith("blob:") || fileUrl.startsWith("data:")) {
+      releaseObjectUrl();
+      setResolvedAudioSrc(fileUrl);
+      return () => undefined;
+    }
+
+    const cachedBlob = audioResourceCache.get(fileUrl);
+    if (cachedBlob) {
+      releaseObjectUrl();
+      currentObjectUrl = URL.createObjectURL(cachedBlob);
+      setResolvedAudioSrc(currentObjectUrl);
+      return () => {
+        releaseObjectUrl();
+      };
+    }
+
+    const controller = new AbortController();
+
+    fetch(fileUrl, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load audio: ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (canceled) return;
+        audioResourceCache.set(fileUrl, blob);
+        releaseObjectUrl();
+        currentObjectUrl = URL.createObjectURL(blob);
+        setResolvedAudioSrc(currentObjectUrl);
+      })
+      .catch((error) => {
+        if (!canceled) {
+          console.warn("Audio load failed:", error);
+          releaseObjectUrl();
+          setResolvedAudioSrc(fileUrl);
+        }
+      });
+
+    return () => {
+      canceled = true;
+      controller.abort();
+      releaseObjectUrl();
+    };
+  }, [currentSong?.fileUrl]);
 
   return {
     audioRef,
@@ -511,5 +580,6 @@ export const usePlayer = ({
     setPitch: (pitch: number) => { }, // Placeholder
     play,
     pause,
+    resolvedAudioSrc,
   };
 };

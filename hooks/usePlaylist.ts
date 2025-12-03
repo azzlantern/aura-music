@@ -11,6 +11,7 @@ import {
   fetchNeteaseSong,
   getNeteaseAudioUrl,
 } from "../services/lyricsService";
+import { audioResourceCache } from "../services/cache";
 
 // Levenshtein distance for fuzzy matching
 const levenshteinDistance = (str1: string, str2: string): number => {
@@ -77,7 +78,14 @@ export const usePlaylist = () => {
 
   const removeSongs = useCallback((ids: string[]) => {
     if (ids.length === 0) return;
-    setQueue((prev) => prev.filter((song) => !ids.includes(song.id)));
+    setQueue((prev) => {
+      prev.forEach((song) => {
+        if (ids.includes(song.id) && song.fileUrl && !song.fileUrl.startsWith("blob:")) {
+          audioResourceCache.delete(song.fileUrl);
+        }
+      });
+      return prev.filter((song) => !ids.includes(song.id));
+    });
     setOriginalQueue((prev) => prev.filter((song) => !ids.includes(song.id)));
   }, []);
 

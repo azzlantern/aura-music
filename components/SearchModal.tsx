@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { SearchIcon, PlayIcon, PlusIcon } from "./Icons";
+import SmartImage from "./SmartImage";
 import { Song } from "../types";
 import {
   getNeteaseAudioUrl,
@@ -237,7 +238,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[12vh] px-4 select-none font-sans"
+      className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
         if (!modalRef.current?.contains(target)) {
@@ -382,10 +383,11 @@ const SearchModal: React.FC<SearchModalProps> = ({
                       >
                         <div className="relative w-10 h-10 rounded-[6px] bg-white/5 overflow-hidden shrink-0 shadow-sm group-hover:shadow-lg transition-shadow duration-200">
                           {s.coverUrl ? (
-                            <img
+                            <SmartImage
                               src={s.coverUrl}
-                              className={`w-full h-full object-cover transition-opacity ${nowPlaying ? "opacity-40 blur-[1px]" : ""}`}
-                              alt=""
+                              alt={s.title}
+                              containerClassName="w-full h-full"
+                              imgClassName={`w-full h-full object-cover transition-opacity ${nowPlaying ? "opacity-40 blur-[1px]" : ""}`}
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-xs opacity-30">
@@ -523,10 +525,11 @@ const SearchModal: React.FC<SearchModalProps> = ({
                       >
                         <div className="relative w-10 h-10 rounded-[6px] bg-white/5 overflow-hidden shrink-0 shadow-sm group-hover:shadow-lg transition-shadow duration-200">
                           {track.coverUrl && (
-                            <img
+                            <SmartImage
                               src={track.coverUrl}
-                              className={`w-full h-full object-cover transition-opacity ${nowPlaying ? "opacity-40 blur-[1px]" : ""}`}
-                              alt=""
+                              alt={track.title}
+                              containerClassName="w-full h-full"
+                              imgClassName={`w-full h-full object-cover transition-opacity ${nowPlaying ? "opacity-40 blur-[1px]" : ""}`}
                             />
                           )}
 

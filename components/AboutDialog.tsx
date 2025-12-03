@@ -12,8 +12,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
 
     return createPortal(
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6"
-            onClick={onClose}
+            className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none pointer-events-none"
         >
             <style>{`
         @keyframes modal-in {
@@ -27,12 +26,15 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
         .dialog-in { animation: modal-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; will-change: transform, opacity; }
       `}</style>
 
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"></div>
+            {/* Shared backdrop */}
+            <div
+                className="absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300 pointer-events-auto"
+                onClick={onClose}
+            />
 
             {/* Modal */}
             <div
-                className="dialog-in relative w-full max-w-[380px] bg-[#1c1c1e]/80 backdrop-blur-2xl saturate-150 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden ring-1 ring-white/5"
+                className="dialog-in relative w-full max-w-[380px] bg-black/40 backdrop-blur-2xl saturate-150 border border-white/10 rounded-[32px] shadow-[0_30px_80px_rgba(0,0,0,0.45)] overflow-hidden ring-1 ring-white/5 pointer-events-auto"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Decorative Gradient Blob */}

@@ -1,3 +1,5 @@
+import { loadImageElementWithCache } from "../../../services/cache";
+
 interface FlowingLayer {
   image: HTMLCanvasElement;
   startX: number;
@@ -18,16 +20,6 @@ const MESH_FLOATS = [
   0.8, 0.8, 0.8, 1.0, 0.8, 0.0, 1.0, 0.0776, 1.0283, 0.4, 1.0, 0.6, 1.0, 0.8,
   1.0, 1.1868, 1.0283,
 ];
-
-const loadImage = (src: string) =>
-  new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-
 const scaleCanvas = (
   source: HTMLCanvasElement,
   newWidth: number,
@@ -217,7 +209,7 @@ const createBaseTexture = async (
 
   if (coverUrl) {
     try {
-      const img = await loadImage(coverUrl);
+      const img = await loadImageElementWithCache(coverUrl);
       const scale = Math.max(size / img.width, size / img.height);
       const w = img.width * scale;
       const h = img.height * scale;

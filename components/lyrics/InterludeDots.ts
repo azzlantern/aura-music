@@ -67,7 +67,6 @@ export class InterludeDots implements ILyricLine {
         
         // Calculate dt with clamping to prevent physics explosions on re-entry
         let dt = this.lastDrawTime === -1 ? 0.016 : (now - this.lastDrawTime) / 1000;
-        dt = Math.min(dt, 0.064); // Cap at ~60ms (approx 4 frames dropped)
         this.lastDrawTime = now;
 
         // Determine target expansion state

@@ -1,5 +1,6 @@
 import { LyricLine } from "../types";
 import { parseLyrics } from "./lyrics";
+import { loadImageElementWithCache } from "./cache";
 
 // Declare global for the script loaded in index.html
 declare const jsmediatags: any;
@@ -181,62 +182,38 @@ export const parseAudioMetadata = (
 };
 
 export const extractColors = async (imageSrc: string): Promise<string[]> => {
-  return new Promise((resolve) => {
-    if (typeof ColorThief === "undefined") {
-      console.warn("ColorThief not loaded");
-      resolve(["#4f46e5", "#db2777", "#1f2937"]);
-      return;
+  if (typeof ColorThief === "undefined") {
+    console.warn("ColorThief not loaded");
+    return ["#4f46e5", "#db2777", "#1f2937"];
+  }
+
+  try {
+    const img = await loadImageElementWithCache(imageSrc);
+    const colorThief = new ColorThief();
+    const palette = colorThief.getPalette(img, 5);
+
+    if (!palette || palette.length === 0) {
+      return [];
     }
 
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = imageSrc;
+    const vibrantCandidates = palette.filter((rgb: number[]) => {
+      const lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+      return lum > 30;
+    });
 
-    img.onload = () => {
-      try {
-        const colorThief = new ColorThief();
-        // 1. Get a palette of 5 colors
-        const palette = colorThief.getPalette(img, 5);
+    const candidates =
+      vibrantCandidates.length > 0 ? vibrantCandidates : palette;
 
-        if (!palette || palette.length === 0) {
-          resolve([]);
-          return;
-        }
+    candidates.sort((a: number[], b: number[]) => {
+      const satA = Math.max(...a) - Math.min(...a);
+      const satB = Math.max(...b) - Math.min(...b);
+      return satB - satA;
+    });
 
-        // 2. Filter out near-black/dark colors
-        // Luminance: 0.2126 R + 0.7152 G + 0.0722 B
-        const vibrantCandidates = palette.filter((rgb: number[]) => {
-          const lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-          // Threshold: remove colors darker than ~30/255 luminance
-          return lum > 30;
-        });
-
-        // If we filtered everything out (very dark album), fall back to original palette
-        const candidates =
-          vibrantCandidates.length > 0 ? vibrantCandidates : palette;
-
-        // 3. Sort by "Vibrancy" (approx Saturation: Max - Min channel value)
-        candidates.sort((a: number[], b: number[]) => {
-          const satA = Math.max(...a) - Math.min(...a);
-          const satB = Math.max(...b) - Math.min(...b);
-          return satB - satA; // Descending saturation
-        });
-
-        // 4. Take Top 4
-        const topColors = candidates.slice(0, 4);
-
-        const colorStrings = topColors.map((c: number[]) => {
-          return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-        });
-        resolve(colorStrings);
-      } catch (e) {
-        console.warn("Color extraction failed", e);
-        resolve([]);
-      }
-    };
-
-    img.onerror = () => {
-      resolve([]);
-    };
-  });
+    const topColors = candidates.slice(0, 4);
+    return topColors.map((c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+  } catch (err) {
+    console.warn("Color extraction failed", err);
+    return [];
+  }
 };

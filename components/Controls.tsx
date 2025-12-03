@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useSpring, useTransition, animated, config } from "@react-spring/web";
 import { formatTime } from "../services/utils";
 import Visualizer from "./visualizer/Visualizer";
+import SmartImage from "./SmartImage";
 import {
   LoopIcon,
   LoopOneIcon,
@@ -262,10 +263,12 @@ const Controls: React.FC<ControlsProps> = ({
         {coverTransitions((style, url) => (
           <animated.div style={style} className="absolute inset-0">
             {url ? (
-              <img
+              <SmartImage
                 src={url}
                 alt="Album Art"
-                className="w-full h-full object-cover"
+                containerClassName="w-full h-full"
+                imgClassName="w-full h-full object-cover"
+                loading="eager"
               />
             ) : (
               <div className="flex flex-col items-center justify-center w-full h-full text-white/20">

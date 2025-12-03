@@ -134,106 +134,104 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
     true,
   );
 
-  if (!isVisible) return null;
+if (!isVisible) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center">
-      <style>{`
-        @keyframes ios-in {
-            0% { opacity: 0; transform: scale(0.95); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-        @keyframes ios-out {
-            0% { opacity: 1; transform: scale(1); }
-            100% { opacity: 0; transform: scale(0.95); }
-        }
-        .animate-in { animation: ios-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
-        .animate-out { animation: ios-out 0.15s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
-      `}</style>
+return createPortal(
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans pointer-events-none">
+    <style>{`
+      @keyframes ios-in {
+          0% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
+      }
+      @keyframes ios-out {
+          0% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.95); }
+      }
+      .animate-in { animation: ios-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
+      .animate-out { animation: ios-out 0.15s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
+    `}</style>
 
-      {/* Backdrop for Help Modal */}
-      {isOpen && (
-        <div
-          className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 pointer-events-auto ${isOpen ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+    {/* Shared backdrop */}
+    <div
+      className={`absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300 pointer-events-auto ${isOpen ? "opacity-100" : "opacity-0"}`}
+      onClick={() => setIsOpen(false)}
+    />
 
-      {/* Help Dialog */}
-      {isOpen && (
-        <div
-          className={`
-              relative w-full max-w-2xl pointer-events-auto
-              bg-zinc-900/60 backdrop-blur-2xl saturate-150
-              border border-white/10
-              rounded-[32px]
-              shadow-2xl shadow-black/30
-              overflow-hidden
-              text-white
-              ${isOpen ? "animate-in" : "animate-out"}
-          `}
-        >
-          {/* Content Container */}
-          <div className="p-8">
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-8">
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold tracking-tight">
-                  Keyboard Shortcuts
-                </h2>
-                <p className="text-white/50 font-medium">
-                  Quick controls for playback
-                </p>
-              </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+    {/* Help Dialog */}
+    {isOpen && (
+      <div
+        className={`
+            relative w-full max-w-2xl pointer-events-auto
+            bg-black/40 backdrop-blur-2xl saturate-150
+            border border-white/10
+            rounded-[32px]
+            shadow-[0_30px_80px_rgba(0,0,0,0.45)]
+            overflow-hidden
+            text-white
+            ${isOpen ? "animate-in" : "animate-out"}
+        `}
+      >
+        {/* Content Container */}
+        <div className="p-8">
+          {/* Header */}
+          <div className="flex items-center gap-4 mb-8">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold tracking-tight">
+                Keyboard Shortcuts
+              </h2>
+              <p className="text-white/50 font-medium">
+                Quick controls for playback
+              </p>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M1 1L11 11M1 11L11 1"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
+                <path
+                  d="M1 1L11 11M1 11L11 1"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-              <ShortcutItem keys={["Space"]} label="Play / Pause" />
-              <ShortcutItem keys={["L"]} label="Loop Mode" />
-              <ShortcutItem keys={["←", "→"]} label="Seek ±5s" />
-              <ShortcutItem keys={["Ctrl", "←/→"]} label="Prev / Next Song" />
-              <ShortcutItem keys={["↑", "↓"]} label="Volume Control" />
-              <ShortcutItem keys={["V"]} label="Volume Dialog" />
-              <ShortcutItem keys={["S"]} label="Speed Dialog" />
-              <ShortcutItem keys={["Ctrl", "K"]} label="Search" />
-              <ShortcutItem keys={["Ctrl", "P"]} label="Toggle Playlist" />
-              <ShortcutItem keys={["Ctrl", "/"]} label="Toggle Shortcuts" />
-            </div>
+          {/* Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+            <ShortcutItem keys={["Space"]} label="Play / Pause" />
+            <ShortcutItem keys={["L"]} label="Loop Mode" />
+            <ShortcutItem keys={["←", "→"]} label="Seek ±5s" />
+            <ShortcutItem keys={["Ctrl", "←/→"]} label="Prev / Next Song" />
+            <ShortcutItem keys={["↑", "↓"]} label="Volume Control" />
+            <ShortcutItem keys={["V"]} label="Volume Dialog" />
+            <ShortcutItem keys={["S"]} label="Speed Dialog" />
+            <ShortcutItem keys={["Ctrl", "K"]} label="Search" />
+            <ShortcutItem keys={["Ctrl", "P"]} label="Toggle Playlist" />
+            <ShortcutItem keys={["Ctrl", "/"]} label="Toggle Shortcuts" />
+          </div>
 
-            {/* Footer Hint */}
-            <div className="mt-8 pt-6 border-t border-white/5 text-center text-white/30 text-xs font-medium tracking-wider uppercase">
-              Press{" "}
-              <kbd className="font-sans bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">
-                Esc
-              </kbd>{" "}
-              to close
-            </div>
+          {/* Footer Hint */}
+          <div className="mt-8 pt-6 border-t border-white/5 text-center text-white/30 text-xs font-medium tracking-wider uppercase">
+            Press{" "}
+            <kbd className="font-sans bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">
+              Esc
+            </kbd>{" "}
+            to close
           </div>
         </div>
-      )}
-    </div>,
-    document.body,
-  );
+      </div>
+    )}
+  </div>,
+  document.body,
+);
 };
 
 const ShortcutItem = ({ keys, label }: { keys: string[]; label: string }) => (

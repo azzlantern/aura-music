@@ -47,6 +47,7 @@ const App: React.FC = () => {
     handleAudioEnded,
     play,
     pause,
+    resolvedAudioSrc,
   } = player;
 
   const [showPlaylist, setShowPlaylist] = useState(false);
@@ -314,7 +315,7 @@ const App: React.FC = () => {
 
       <audio
         ref={audioRef}
-        src={currentSong?.fileUrl}
+        src={resolvedAudioSrc ?? currentSong?.fileUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleAudioEnded}

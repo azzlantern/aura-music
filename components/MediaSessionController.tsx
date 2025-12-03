@@ -1,5 +1,6 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { PlayState, Song } from "../types";
+import { fetchImageBlobWithCache } from "../services/cache";
 
 const MEDIA_SESSION_SEEK_STEP = 10;
 
@@ -31,6 +32,41 @@ const MediaSessionController: React.FC<MediaSessionControllerProps> = ({
   onPrev,
   onSeek,
 }) => {
+  const [artworkSrc, setArtworkSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let canceled = false;
+    let objectUrl: string | null = null;
+
+    if (!currentSong?.coverUrl) {
+      setArtworkSrc(null);
+      return () => {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
+      };
+    }
+
+    fetchImageBlobWithCache(currentSong.coverUrl)
+      .then((blob) => {
+        if (canceled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setArtworkSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!canceled) {
+          setArtworkSrc(null);
+        }
+      });
+
+    return () => {
+      canceled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [currentSong?.coverUrl]);
+
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
       return;
@@ -38,55 +74,49 @@ const MediaSessionController: React.FC<MediaSessionControllerProps> = ({
 
     const mediaSession = navigator.mediaSession;
 
-    
     if (!currentSong) {
       mediaSession.metadata = null;
-      mediaSession.playbackState =
-        playState === PlayState.PLAYING ? "playing" : "paused";
-      return;
-    }
-
-    if (typeof window !== "undefined" && "MediaMetadata" in window) {
+    } else if (typeof window !== "undefined" && "MediaMetadata" in window) {
       mediaSession.metadata = new window.MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist,
         album: currentSong.album ?? undefined,
-        artwork: currentSong.coverUrl
-          ? [
-              {
-                src: currentSong.coverUrl,
-                sizes: "512x512",
-                type: "image/jpeg",
-              },
-            ]
-          : undefined,
+        artwork:
+          artworkSrc || currentSong.coverUrl
+            ? [
+                {
+                  src: artworkSrc || currentSong.coverUrl!,
+                  sizes: "512x512",
+                  type: "image/jpeg",
+                },
+              ]
+            : undefined,
       });
     }
 
-    console.log(mediaSession)
-
-
     mediaSession.playbackState =
       playState === PlayState.PLAYING ? "playing" : "paused";
+  }, [currentSong, playState, artworkSrc]);
 
+  useEffect(() => {
     if (
-      typeof mediaSession.setPositionState === "function" &&
-      duration > 0 &&
-      Number.isFinite(currentTime)
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      duration <= 0 ||
+      !Number.isFinite(currentTime)
     ) {
+      return;
+    }
+
+    const mediaSession = navigator.mediaSession;
+    if (typeof mediaSession.setPositionState === "function") {
       mediaSession.setPositionState({
         duration,
         playbackRate,
         position: clamp(currentTime, 0, duration),
       });
     }
-  }, [
-    currentSong,
-    playState,
-    currentTime,
-    duration,
-    playbackRate,
-  ]);
+  }, [currentTime, duration, playbackRate]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
