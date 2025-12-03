@@ -16,6 +16,8 @@ const TopBar: React.FC<TopBarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTopBarActive, setIsTopBarActive] = useState(false);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -33,6 +35,32 @@ const TopBar: React.FC<TopBarProps> = ({
     }
   };
 
+  const activateTopBar = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
+    setIsTopBarActive(true);
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsTopBarActive(false);
+      hideTimeoutRef.current = null;
+    }, 2500);
+  };
+
+  const handlePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    const wasActive = isTopBarActive;
+
+    if (!wasActive) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    activateTopBar();
+  };
+
   React.useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -44,6 +72,14 @@ const TopBar: React.FC<TopBarProps> = ({
     };
   }, []);
 
+  React.useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -52,15 +88,26 @@ const TopBar: React.FC<TopBarProps> = ({
     e.target.value = "";
   };
 
+  const baseTransitionClasses = "transition-all duration-500 ease-out";
+  const mobileActiveClasses = isTopBarActive
+    ? "opacity-100 translate-y-0 pointer-events-auto"
+    : "opacity-0 -translate-y-2 pointer-events-none";
+  const hoverSupportClasses = "group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto";
+
   return (
-    <div className="fixed top-0 left-0 w-full h-14 z-[60] group">
+    <div
+      className="fixed top-0 left-0 w-full h-14 z-[60] group"
+      onPointerDownCapture={handlePointerDownCapture}
+    >
       {/* Blur Background Layer (Animate in) */}
-      <div className="absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+      <div
+        className={`absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 transition-all duration-500 ${isTopBarActive ? "opacity-100" : "opacity-0"} group-hover:opacity-100`}
+      ></div>
 
       {/* Content (Animate in) */}
       <div className="relative z-10 w-full h-full px-6 flex justify-between items-center pointer-events-auto">
         {/* Logo / Title */}
-        <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 -translate-y-2 group-hover:translate-y-0 transition-all duration-500 ease-out">
+        <div className={`flex items-center gap-3 ${baseTransitionClasses} ${mobileActiveClasses} ${hoverSupportClasses}`}>
           <div className="w-9 h-9 rounded-[10px] shadow-lg shadow-purple-500/20 overflow-hidden">
             <AuraLogo className="w-full h-full" />
           </div>
@@ -70,7 +117,9 @@ const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {/* Actions (iOS 18 Style Glass Buttons) */}
-        <div className="flex gap-3 opacity-0 group-hover:opacity-100 -translate-y-2 group-hover:translate-y-0 transition-all duration-500 ease-out delay-75">
+        <div
+          className={`flex gap-3 ${baseTransitionClasses} delay-75 ${mobileActiveClasses} ${hoverSupportClasses}`}
+        >
           {/* Search Button */}
           <button
             onClick={onSearchClick}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useSpring, useTransition, animated, config } from "@react-spring/web";
+import { useSpring, animated, useTransition, to } from "@react-spring/web";
 import { formatTime } from "../services/utils";
 import Visualizer from "./visualizer/Visualizer";
 import SmartImage from "./SmartImage";
@@ -48,6 +48,8 @@ interface ControlsProps {
   setShowVolumePopup: (show: boolean) => void;
   showSettingsPopup: boolean;
   setShowSettingsPopup: (show: boolean) => void;
+  isBuffering: boolean;
+  bufferProgress: number;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -76,6 +78,8 @@ const Controls: React.FC<ControlsProps> = ({
   setShowVolumePopup,
   showSettingsPopup,
   setShowSettingsPopup,
+  isBuffering,
+  bufferProgress,
 }) => {
   const volumeContainerRef = useRef<HTMLDivElement>(null);
   const settingsContainerRef = useRef<HTMLDivElement>(null);
@@ -162,14 +166,41 @@ const Controls: React.FC<ControlsProps> = ({
   // (handled by the useEffect above resetting on currentTime change)
   const displayTime = isSeeking ? seekTime : interpolatedTime;
 
-  // Cover transition animation (vinyl record style)
-  const coverTransitions = useTransition(coverUrl, {
-    keys: (url) => url || "empty",
-    from: { opacity: 0, transform: "translateX(100%) scale(0.9)" },
-    enter: { opacity: 1, transform: "translateX(0%) scale(1)" },
-    leave: { opacity: 0, transform: "translateX(-100%) scale(0.9)" },
-    config: { tension: 280, friction: 35 },
-  });
+  const [coverSpring, coverApi] = useSpring(() => ({
+    scale: isPlaying ? 1.04 : 0.94,
+    boxShadow: isPlaying
+      ? "0 20px 35px rgba(0,0,0,0.55)"
+      : "0 10px 20px rgba(0,0,0,0.45)",
+    config: { tension: 300, friction: 28 },
+  }));
+
+  useEffect(() => {
+    coverApi.start({
+      scale: isPlaying ? 1.04 : 0.94,
+      boxShadow: isPlaying
+        ? "0 20px 35px rgba(0,0,0,0.55)"
+        : "0 10px 20px rgba(0,0,0,0.45)",
+      config: { tension: 300, friction: 28 },
+    });
+  }, [isPlaying, coverApi]);
+
+  useEffect(() => {
+    if (!coverUrl) return;
+    coverApi.start({
+      scale: 0.96,
+      config: { tension: 320, friction: 24 },
+    });
+    const timeout = window.setTimeout(() => {
+      coverApi.start({
+        scale: isPlaying ? 1.04 : 0.94,
+        boxShadow: isPlaying
+          ? "0 20px 35px rgba(0,0,0,0.55)"
+          : "0 10px 20px rgba(0,0,0,0.45)",
+        config: { tension: 260, friction: 32 },
+      });
+    }, 180);
+    return () => clearTimeout(timeout);
+  }, [coverUrl, isPlaying, coverApi]);
 
   // Close popups when clicking outside
   useEffect(() => {
@@ -256,30 +287,48 @@ const Controls: React.FC<ControlsProps> = ({
     return <VolumeHighFilledIcon className="w-4 h-4" />;
   };
 
+  const controlsScaleSpring = useSpring({
+    scale: isPlaying ? 1.02 : 0.97,
+    config: {
+      tension: isPlaying ? 320 : 260,
+      friction: isPlaying ? 22 : 30,
+    },
+    immediate: false,
+  });
+
+  const normalizedBufferProgress = Math.max(0, Math.min(1, bufferProgress));
+  const bufferingPercent = Math.round(normalizedBufferProgress * 100);
+  const bufferedWidthPercent = isBuffering ? bufferingPercent : 0;
+
   return (
     <div className="w-full flex flex-col items-center justify-center gap-2 text-white select-none">
       {/* Cover Section */}
-      <div className="relative aspect-square w-64 md:w-72 lg:w-[300px] rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden mb-6">
-        {coverTransitions((style, url) => (
-          <animated.div style={style} className="absolute inset-0">
-            {url ? (
-              <SmartImage
-                src={url}
-                alt="Album Art"
-                containerClassName="w-full h-full"
-                imgClassName="w-full h-full object-cover"
-                loading="eager"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center w-full h-full text-white/20">
-                <div className="text-8xl mb-4">♪</div>
-                <p className="text-sm">No Music Loaded</p>
-              </div>
-            )}
-          </animated.div>
-        ))}
+      <animated.div
+        style={{
+          boxShadow: coverSpring.boxShadow,
+          transform: to(
+            [coverSpring.scale, controlsScaleSpring.scale],
+            (coverScale, controlScale) => `scale(${coverScale * controlScale})`
+          ),
+        }}
+        className="relative aspect-square w-64 md:w-72 lg:w-[300px] rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 shadow-lg shadow-black/30 ring-1 ring-white/10 overflow-hidden mb-6"
+      >
+        {coverUrl ? (
+          <SmartImage
+            src={coverUrl}
+            alt="Album Art"
+            containerClassName="absolute inset-0"
+            imgClassName="w-full h-full object-cover"
+            loading="eager"
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/20">
+            <div className="text-8xl mb-4">♪</div>
+            <p className="text-sm">No Music Loaded</p>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
-      </div>
+      </animated.div>
       {/* Song Info */}
       <div className="text-center mb-1 px-4 select-text cursor-text">
         <h2 className="text-2xl font-bold tracking-tight drop-shadow-md line-clamp-1">
@@ -304,6 +353,15 @@ const Controls: React.FC<ControlsProps> = ({
         <div className="relative flex-1 h-8 flex items-center cursor-pointer group">
           {/* Background Track */}
           <div className="absolute inset-x-0 h-[3px] bg-white/20 rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"></div>
+
+          {/* Buffer Progress */}
+          <div
+            className="absolute left-0 h-[3px] rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"
+            style={{
+              width: bufferedWidthPercent + "%",
+              backgroundColor: "rgba(255,255,255,0.35)",
+            }}
+          ></div>
 
           {/* Active Progress */}
           <div

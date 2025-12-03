@@ -60,6 +60,12 @@ export const usePlayer = ({
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSeekingRef = useRef(false);
 
+  const pauseAndResetCurrentAudio = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+  }, []);
+
   const currentSong = queue[currentIndex] ?? null;
   const accentColor = currentSong?.colors?.[0] || "#a855f7";
 
@@ -166,12 +172,14 @@ export const usePlayer = ({
 
   const handleTimeUpdate = useCallback(() => {
     if (!audioRef.current || isSeekingRef.current) return;
-    setCurrentTime(audioRef.current.currentTime);
+    const value = audioRef.current.currentTime;
+    setCurrentTime(Number.isFinite(value) ? value : 0);
   }, []);
 
   const handleLoadedMetadata = useCallback(() => {
     if (!audioRef.current) return;
-    setDuration(audioRef.current.duration);
+    const value = audioRef.current.duration;
+    setDuration(Number.isFinite(value) ? value : 0);
     if (playState === PlayState.PLAYING) {
       audioRef.current
         .play()
@@ -190,28 +198,31 @@ export const usePlayer = ({
       return;
     }
 
+    pauseAndResetCurrentAudio();
     const next = (currentIndex + 1) % queue.length;
     setCurrentIndex(next);
     setMatchStatus("idle");
     setPlayState(PlayState.PLAYING);
-  }, [queue.length, playMode, currentIndex]);
+  }, [queue.length, playMode, currentIndex, pauseAndResetCurrentAudio]);
 
   const playPrev = useCallback(() => {
     if (queue.length === 0) return;
+    pauseAndResetCurrentAudio();
     const prev = (currentIndex - 1 + queue.length) % queue.length;
     setCurrentIndex(prev);
     setMatchStatus("idle");
     setPlayState(PlayState.PLAYING);
-  }, [queue.length, currentIndex]);
+  }, [queue.length, currentIndex, pauseAndResetCurrentAudio]);
 
   const playIndex = useCallback(
     (index: number) => {
       if (index < 0 || index >= queue.length) return;
+      pauseAndResetCurrentAudio();
       setCurrentIndex(index);
       setPlayState(PlayState.PLAYING);
       setMatchStatus("idle");
     },
-    [queue.length],
+    [queue.length, pauseAndResetCurrentAudio],
   );
 
   const handleAudioEnded = useCallback(() => {
@@ -415,12 +426,28 @@ export const usePlayer = ({
 
     const handleNativeTimeUpdate = () => {
       if (isSeekingRef.current) return;
-      setCurrentTime(audio.currentTime);
+      const value = audio.currentTime;
+      setCurrentTime(Number.isFinite(value) ? value : 0);
     };
 
     audio.addEventListener("timeupdate", handleNativeTimeUpdate);
     return () => {
       audio.removeEventListener("timeupdate", handleNativeTimeUpdate);
+    };
+  }, [audioRef]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleDurationChange = () => {
+      const value = audio.duration;
+      setDuration(Number.isFinite(value) ? value : 0);
+    };
+
+    audio.addEventListener("durationchange", handleDurationChange);
+    return () => {
+      audio.removeEventListener("durationchange", handleDurationChange);
     };
   }, [audioRef]);
 
@@ -466,6 +493,8 @@ export const usePlayer = ({
   const [speed, setSpeed] = useState(1);
   const [preservesPitch, setPreservesPitch] = useState(true);
   const [resolvedAudioSrc, setResolvedAudioSrc] = useState<string | null>(null);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [bufferProgress, setBufferProgress] = useState(0);
 
   const handleSetSpeed = useCallback((newSpeed: number) => {
     setSpeed(newSpeed);
@@ -486,6 +515,10 @@ export const usePlayer = ({
   useEffect(() => {
     let canceled = false;
     let currentObjectUrl: string | null = null;
+    let controller: AbortController | null = null;
+    let mediaSource: MediaSource | null = null;
+    let sourceBuffer: SourceBuffer | null = null;
+    let sourceUpdateHandler: (() => void) | null = null;
 
     const releaseObjectUrl = () => {
       if (currentObjectUrl) {
@@ -494,9 +527,48 @@ export const usePlayer = ({
       }
     };
 
+    const cleanupSourceBuffer = () => {
+      if (sourceBuffer && sourceUpdateHandler) {
+        try {
+          sourceBuffer.removeEventListener("updateend", sourceUpdateHandler);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      sourceBuffer = null;
+      sourceUpdateHandler = null;
+    };
+
+    const resetBuffering = () => {
+      if (canceled) return;
+      setIsBuffering(false);
+      setBufferProgress(0);
+    };
+
+    const fallbackToNativeSrc = () => {
+      cleanupSourceBuffer();
+      if (mediaSource && mediaSource.readyState === "open") {
+        try {
+          mediaSource.endOfStream();
+        } catch {
+          // ignore
+        }
+      }
+      mediaSource = null;
+      releaseObjectUrl();
+      if (!canceled) {
+        setResolvedAudioSrc(null);
+      }
+    };
+
     if (!currentSong?.fileUrl) {
+      releaseObjectUrl();
       setResolvedAudioSrc(null);
+      resetBuffering();
       return () => {
+        canceled = true;
+        controller?.abort();
+        cleanupSourceBuffer();
         releaseObjectUrl();
       };
     }
@@ -506,7 +578,11 @@ export const usePlayer = ({
     if (fileUrl.startsWith("blob:") || fileUrl.startsWith("data:")) {
       releaseObjectUrl();
       setResolvedAudioSrc(fileUrl);
-      return () => undefined;
+      setIsBuffering(false);
+      setBufferProgress(1);
+      return () => {
+        canceled = true;
+      };
     }
 
     const cachedBlob = audioResourceCache.get(fileUrl);
@@ -514,38 +590,271 @@ export const usePlayer = ({
       releaseObjectUrl();
       currentObjectUrl = URL.createObjectURL(cachedBlob);
       setResolvedAudioSrc(currentObjectUrl);
+      setIsBuffering(false);
+      setBufferProgress(1);
       return () => {
+        canceled = true;
         releaseObjectUrl();
       };
     }
 
-    const controller = new AbortController();
+    const MediaSourceCtor =
+      typeof window !== "undefined" ? window.MediaSource : undefined;
+    const supportsMediaSource =
+      typeof MediaSourceCtor !== "undefined" &&
+      typeof MediaSourceCtor.isTypeSupported === "function";
 
-    fetch(fileUrl, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load audio: ${response.status}`);
+    releaseObjectUrl();
+    setIsBuffering(true);
+    setBufferProgress(0);
+
+    if (typeof fetch !== "function") {
+      resetBuffering();
+      return () => {
+        canceled = true;
+      };
+    }
+
+    if (supportsMediaSource && MediaSourceCtor) {
+      mediaSource = new MediaSourceCtor();
+      currentObjectUrl = URL.createObjectURL(mediaSource);
+      setResolvedAudioSrc(currentObjectUrl);
+    } else {
+      setResolvedAudioSrc(null);
+    }
+
+    const waitForSourceOpen = () =>
+      new Promise<void>((resolve) => {
+        if (!mediaSource) {
+          resolve();
+          return;
         }
-        return response.blob();
-      })
-      .then((blob) => {
-        if (canceled) return;
-        audioResourceCache.set(fileUrl, blob);
-        releaseObjectUrl();
-        currentObjectUrl = URL.createObjectURL(blob);
-        setResolvedAudioSrc(currentObjectUrl);
-      })
-      .catch((error) => {
-        if (!canceled) {
-          console.warn("Audio load failed:", error);
-          releaseObjectUrl();
-          setResolvedAudioSrc(fileUrl);
+        if (mediaSource.readyState === "open") {
+          resolve();
+          return;
         }
+        const handleOpen = () => {
+          mediaSource?.removeEventListener("sourceopen", handleOpen);
+          resolve();
+        };
+        mediaSource.addEventListener("sourceopen", handleOpen);
       });
+
+    const streamViaMediaSource = async (signal: AbortSignal): Promise<boolean> => {
+      if (!mediaSource) return false;
+      try {
+        const response = await fetch(fileUrl, { signal });
+        if (!response.ok) {
+          throw new Error("Failed to load audio: " + response.status);
+        }
+
+        if (!response.body) {
+          return false;
+        }
+
+        const headerType = response.headers.get("content-type") || "";
+        const baseMime = headerType.split(";")[0].trim() || "audio/mpeg";
+        const preferredMime = MediaSourceCtor?.isTypeSupported?.(baseMime)
+          ? baseMime
+          : MediaSourceCtor?.isTypeSupported?.("audio/mpeg")
+            ? "audio/mpeg"
+            : "";
+
+        if (!preferredMime) {
+          return false;
+        }
+
+        await waitForSourceOpen();
+        if (canceled) return true;
+
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer(preferredMime);
+          sourceBuffer.mode = "sequence";
+        } catch (error) {
+          console.warn("Creating SourceBuffer failed:", error);
+          return false;
+        }
+
+        const chunkQueue: Uint8Array[] = [];
+        let streamFinished = false;
+        const cachedChunks: BlobPart[] = [];
+        const totalBytes = Number(response.headers.get("content-length")) || 0;
+        const reader = response.body.getReader();
+
+        const maybeCloseStream = () => {
+          if (
+            streamFinished &&
+            chunkQueue.length === 0 &&
+            mediaSource &&
+            mediaSource.readyState === "open" &&
+            sourceBuffer &&
+            !sourceBuffer.updating
+          ) {
+            try {
+              mediaSource.endOfStream();
+            } catch {
+              // ignore
+            }
+          }
+        };
+
+        const appendFromQueue = () => {
+          if (!sourceBuffer || sourceBuffer.updating || chunkQueue.length === 0) {
+            maybeCloseStream();
+            return;
+          }
+          const next = chunkQueue.shift();
+          if (!next) {
+            maybeCloseStream();
+            return;
+          }
+          try {
+            sourceBuffer.appendBuffer(Buffer.from(next));
+          } catch (error) {
+            console.warn("Appending audio chunk failed:", error);
+            chunkQueue.length = 0;
+          }
+        };
+
+        sourceUpdateHandler = () => {
+          appendFromQueue();
+        };
+        sourceBuffer.addEventListener("updateend", sourceUpdateHandler);
+
+        let loaded = 0;
+        while (!canceled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            const copy = value.slice();
+            chunkQueue.push(copy);
+            cachedChunks.push(copy);
+            loaded += copy.byteLength;
+            if (!canceled) {
+              if (totalBytes > 0) {
+                setBufferProgress(Math.min(loaded / totalBytes, 0.995));
+              } else {
+                setBufferProgress((prev) => {
+                  const increment = copy.byteLength / (5 * 1024 * 1024);
+                  return Math.min(0.95, prev + increment);
+                });
+              }
+            }
+            appendFromQueue();
+          }
+        }
+
+        streamFinished = true;
+        appendFromQueue();
+        maybeCloseStream();
+
+        if (canceled) {
+          return true;
+        }
+
+        const blob = new Blob(cachedChunks, {
+          type: baseMime || "audio/mpeg",
+        });
+        audioResourceCache.set(fileUrl, blob);
+        setBufferProgress(1);
+        return true;
+      } catch (error) {
+        if (!canceled) {
+          console.warn("Audio streaming failed:", error);
+          setBufferProgress(0);
+        }
+        return false;
+      }
+    };
+
+    const cacheWithoutStreaming = async (signal: AbortSignal) => {
+      try {
+        const response = await fetch(fileUrl, { signal });
+        if (!response.ok) {
+          throw new Error("Failed to load audio: " + response.status);
+        }
+
+        const totalBytes = Number(response.headers.get("content-length")) || 0;
+
+        if (!response.body) {
+          const fallbackBlob = await response.blob();
+          if (canceled) return;
+          audioResourceCache.set(fileUrl, fallbackBlob);
+          setBufferProgress(1);
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const chunks: BlobPart[] = [];
+        let loaded = 0;
+
+        while (!canceled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            const copy = value.slice();
+            chunks.push(copy);
+            loaded += copy.byteLength;
+            if (totalBytes > 0) {
+              setBufferProgress(Math.min(loaded / totalBytes, 0.99));
+            } else {
+              setBufferProgress((prev) => {
+                const increment = copy.byteLength / (5 * 1024 * 1024);
+                return Math.min(0.95, prev + increment);
+              });
+            }
+          }
+        }
+
+        if (canceled) return;
+
+        const blob = new Blob(chunks, {
+          type: response.headers.get("content-type") || "audio/mpeg",
+        });
+        audioResourceCache.set(fileUrl, blob);
+        setBufferProgress(1);
+      } catch (error) {
+        if (!canceled) {
+          console.warn("Audio caching failed:", error);
+          setBufferProgress(0);
+        }
+      }
+    };
+
+    const start = async () => {
+      try {
+        if (supportsMediaSource) {
+          controller = new AbortController();
+          const streamed = await streamViaMediaSource(controller.signal);
+          if (!streamed && !canceled) {
+            fallbackToNativeSrc();
+            controller = new AbortController();
+            await cacheWithoutStreaming(controller.signal);
+          }
+        } else {
+          controller = new AbortController();
+          await cacheWithoutStreaming(controller.signal);
+        }
+      } finally {
+        if (!canceled) {
+          setIsBuffering(false);
+        }
+      }
+    };
+
+    start();
 
     return () => {
       canceled = true;
-      controller.abort();
+      controller?.abort();
+      cleanupSourceBuffer();
+      if (mediaSource && mediaSource.readyState === "open") {
+        try {
+          mediaSource.endOfStream();
+        } catch {
+          // ignore
+        }
+      }
       releaseObjectUrl();
     };
   }, [currentSong?.fileUrl]);
@@ -581,5 +890,7 @@ export const usePlayer = ({
     play,
     pause,
     resolvedAudioSrc,
+    isBuffering,
+    bufferProgress,
   };
 };
