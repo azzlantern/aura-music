@@ -92,7 +92,7 @@ const mapNeteaseSongToTrack = (song: NeteaseApiSong): NeteaseTrackInfo => ({
   title: song.name?.trim() ?? "",
   artist: formatArtists(song.ar),
   album: song.al?.name?.trim() ?? "",
-  coverUrl: song.al?.picUrl,
+  coverUrl: song.al?.picUrl?.replaceAll("http:", "https:"),
   duration: song.dt,
   isNetease: true,
   neteaseId: song.id.toString(),
@@ -292,15 +292,15 @@ export const fetchLyricsById = async (
       clean: cleanLrc,
       metadata: lrcMetadata,
     } = rawLrc
-      ? extractMetadataLines(rawLrc)
-      : { clean: undefined, metadata: [] };
+        ? extractMetadataLines(rawLrc)
+        : { clean: undefined, metadata: [] };
 
     const {
       clean: cleanYrc,
       metadata: yrcMetadata,
     } = rawYrc
-      ? extractMetadataLines(rawYrc)
-      : { clean: undefined, metadata: [] };
+        ? extractMetadataLines(rawYrc)
+        : { clean: undefined, metadata: [] };
 
     // Extract metadata from translation if available
     let cleanTranslation: string | undefined;

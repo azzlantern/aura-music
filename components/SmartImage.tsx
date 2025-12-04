@@ -12,7 +12,8 @@ import { imageResourceCache } from "../services/cache";
 
 const makeCacheKey = (src: string, width: number, height: number) => {
   const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-  return `${src}|${width}x${height}@${Math.round(dpr * 100)}`;
+  const ratio = (width / height).toFixed(3);
+  return `${src}|${ratio}|${width}x${height}@${Math.round(dpr * 100)}`;
 };
 
 interface SmartImageProps
