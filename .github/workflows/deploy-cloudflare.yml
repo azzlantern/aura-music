@@ -18,7 +18,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Build
         run: VITE_BASE_PATH="/" npm run build

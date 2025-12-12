@@ -26,7 +26,7 @@ To deploy to Cloudflare Pages using GitHub Actions, add the following repository
 - `CLOUDFLARE_API_TOKEN` — a token with Pages Deploy permissions
 - `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account id
 
-The repo already includes a GitHub Action workflow to deploy built files to Cloudflare Pages (`.github/workflows/deploy-cloudflare.yml`). The workflow will run `npm ci` and `npm run build` and then publish the `dist` folder.
+The repo already includes a GitHub Action workflow to deploy built files to Cloudflare Pages (`.github/workflows/deploy-cloudflare.yml`). The workflow will attempt `npm ci` and fall back to `npm install` if a lockfile isn't present, and then run `npm run build` and publish the `dist` folder.
 
 You may also set `VITE_BASE_PATH` using environment variables if you need a non-root base path.
 
