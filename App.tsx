@@ -134,14 +134,16 @@ const App: React.FC = () => {
   // 自动加载默认歌单
   useEffect(() => {
     const loadDefaultPlaylist = async () => {
-      // 检查配置是否启用自动加载
-      if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
-      
-      // 检查是否已经有歌曲在队列中，避免重复加载
-      if (playlist.queue.length > 0) return;
-      
       try {
+        // 检查配置是否启用自动加载
+        if (!APP_CONFIG?.DEFAULT_PLAYLIST?.ENABLED) return;
+        
+        // 检查是否已经有歌曲在队列中，避免重复加载
+        if (playlist.queue.length > 0) return;
+        
+        console.log("开始自动加载歌单...");
         const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
+        
         if (result.success && result.songs.length > 0) {
           console.log(`自动加载歌单成功：${result.songs.length} 首歌曲`);
           
@@ -160,16 +162,15 @@ const App: React.FC = () => {
           toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
         } else {
           console.warn("自动加载歌单失败:", result.message);
-          toast.error("自动加载歌单失败，请手动导入");
         }
       } catch (error) {
         console.error("自动加载歌单出错:", error);
-        toast.error("自动加载歌单出错，请检查网络连接");
+        // 不显示错误提示，避免影响用户体验
       }
     };
 
     // 延迟一点时间确保所有组件都已初始化
-    const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
+    const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG?.DEFAULT_PLAYLIST?.LOAD_DELAY || 1000);
     return () => clearTimeout(timer);
   }, [playlist, handlePlaylistAddition, toast]);
 
