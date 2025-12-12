@@ -12,7 +12,7 @@ import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
-import { APP_CONFIG } from "./config";
+// import { APP_CONFIG } from "./config";
 
 const App: React.FC = () => {
   const { toast } = useToast();
@@ -131,48 +131,32 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 自动加载默认歌单
+  // 自动加载指定歌单 - 如需启用请取消注释
+  /*
   useEffect(() => {
     const loadDefaultPlaylist = async () => {
       try {
-        // 检查配置是否启用自动加载
-        if (!APP_CONFIG?.DEFAULT_PLAYLIST?.ENABLED) return;
-        
         // 检查是否已经有歌曲在队列中，避免重复加载
         if (playlist.queue.length > 0) return;
         
-        console.log("开始自动加载歌单...");
-        const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
+        const playlistUrl = "https://music.163.com/playlist?id=17473221422";
+        const result = await playlist.importFromUrl(playlistUrl);
         
         if (result.success && result.songs.length > 0) {
           console.log(`自动加载歌单成功：${result.songs.length} 首歌曲`);
-          
-          // 根据配置决定是否自动播放
-          if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
-            setTimeout(() => {
-              handlePlaylistAddition(result.songs, true);
-            }, 100);
-          } else {
-            // 只添加到队列，不自动播放
-            setTimeout(() => {
-              handlePlaylistAddition(result.songs, false);
-            }, 100);
-          }
-          
-          toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
-        } else {
-          console.warn("自动加载歌单失败:", result.message);
+          setTimeout(() => {
+            handlePlaylistAddition(result.songs, true);
+          }, 100);
         }
       } catch (error) {
         console.error("自动加载歌单出错:", error);
-        // 不显示错误提示，避免影响用户体验
       }
     };
 
-    // 延迟一点时间确保所有组件都已初始化
-    const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG?.DEFAULT_PLAYLIST?.LOAD_DELAY || 1000);
+    const timer = setTimeout(loadDefaultPlaylist, 1000);
     return () => clearTimeout(timer);
-  }, [playlist, handlePlaylistAddition, toast]);
+  }, [playlist, handlePlaylistAddition]);
+  */
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
