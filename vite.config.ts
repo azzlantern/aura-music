@@ -4,9 +4,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  const productionBase = env.VITE_BASE_PATH || '/aura-music/';
+  // 在GitHub Actions中，使用相对路径
+  const productionBase = mode === 'production' ? './' : '/';
   return {
-    base: mode === 'production' ? productionBase : '/',
+    base: productionBase,
     server: {
       port: 3000,
       host: '0.0.0.0',
