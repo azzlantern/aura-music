@@ -131,9 +131,15 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 自动加载默认歌单
+  // 自动加载默认歌单 - 只在初始化时加载一次
   useEffect(() => {
+    let isLoadingRef = false;
+    
     const loadDefaultPlaylist = async () => {
+      // 避免重复加载
+      if (isLoadingRef) return;
+      isLoadingRef = true;
+      
       // 检查配置是否启用自动加载
       if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
       
@@ -160,11 +166,9 @@ const App: React.FC = () => {
           toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
         } else {
           console.warn("自动加载歌单失败:", result.message);
-          toast.error("自动加载歌单失败，请手动导入");
         }
       } catch (error) {
         console.error("自动加载歌单出错:", error);
-        toast.error("自动加载歌单出错，请检查网络连接");
       }
     };
 
