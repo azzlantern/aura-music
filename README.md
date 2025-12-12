@@ -19,6 +19,17 @@ View your app in AI Studio: https://ai.studio/apps/drive/1ggcfQNwQs0cGrbzb1oapyS
 
 **Prerequisites:** Node.js
 
+## Cloudflare Pages deployment
+
+To deploy to Cloudflare Pages using GitHub Actions, add the following repository secrets in GitHub:
+
+- `CLOUDFLARE_API_TOKEN` — a token with Pages Deploy permissions
+- `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account id
+
+The repo already includes a GitHub Action workflow to deploy built files to Cloudflare Pages (`.github/workflows/deploy-cloudflare.yml`). The workflow will run `npm ci` and `npm run build` and then publish the `dist` folder.
+
+You may also set `VITE_BASE_PATH` using environment variables if you need a non-root base path.
+
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
