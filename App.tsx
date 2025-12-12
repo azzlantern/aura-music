@@ -12,6 +12,7 @@ import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
+import { APP_CONFIG } from "./config";
 
 const App: React.FC = () => {
   const { toast } = useToast();
@@ -129,6 +130,48 @@ const App: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // 自动加载默认歌单
+  useEffect(() => {
+    const loadDefaultPlaylist = async () => {
+      // 检查配置是否启用自动加载
+      if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
+      
+      // 检查是否已经有歌曲在队列中，避免重复加载
+      if (playlist.queue.length > 0) return;
+      
+      try {
+        const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
+        if (result.success && result.songs.length > 0) {
+          console.log(`自动加载歌单成功：${result.songs.length} 首歌曲`);
+          
+          // 根据配置决定是否自动播放
+          if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
+            setTimeout(() => {
+              handlePlaylistAddition(result.songs, true);
+            }, 100);
+          } else {
+            // 只添加到队列，不自动播放
+            setTimeout(() => {
+              handlePlaylistAddition(result.songs, false);
+            }, 100);
+          }
+          
+          toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
+        } else {
+          console.warn("自动加载歌单失败:", result.message);
+          toast.error("自动加载歌单失败，请手动导入");
+        }
+      } catch (error) {
+        console.error("自动加载歌单出错:", error);
+        toast.error("自动加载歌单出错，请检查网络连接");
+      }
+    };
+
+    // 延迟一点时间确保所有组件都已初始化
+    const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
+    return () => clearTimeout(timer);
+  }, [playlist, handlePlaylistAddition, toast]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;

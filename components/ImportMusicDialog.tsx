@@ -13,17 +13,28 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
   onClose,
   onImport,
 }) => {
-  const [importUrl, setImportUrl] = useState("");
+  const [importInput, setImportInput] = useState("");
+  const [inputType, setInputType] = useState<"url" | "id">("id");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleImport = async () => {
-    if (!importUrl.trim() || isLoading) return;
+    if (!importInput.trim() || isLoading) return;
 
     setIsLoading(true);
     try {
-      const success = await onImport(importUrl);
+      let finalUrl = importInput.trim();
+      
+      // 如果是ID模式，构造完整的网易云音乐歌单URL
+      if (inputType === "id") {
+        // 检查是否只是纯数字ID
+        if (/^\d+$/.test(finalUrl)) {
+          finalUrl = `https://music.163.com/#/playlist?id=${finalUrl}`;
+        }
+      }
+      
+      const success = await onImport(finalUrl);
       if (success) {
-        setImportUrl("");
+        setImportInput("");
         onClose();
       }
     } finally {
@@ -32,7 +43,7 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
   };
 
   const handleClose = () => {
-    setImportUrl("");
+    setImportInput("");
     onClose();
   };
 
@@ -58,22 +69,50 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
           </div>
 
           <h3 className="text-xl font-bold text-white tracking-tight">
-            Import Music
+            导入网易云音乐
           </h3>
           <p className="text-white/60 text-[15px] mt-2 leading-relaxed px-2">
-            Paste a{" "}
+            输入网易云音乐{" "}
             <span className="text-white/90 font-medium">
-              Netease Cloud Music
+              歌单ID或完整链接
             </span>{" "}
-            song or playlist link to add to queue.
+            来添加到播放队列
           </p>
+
+          {/* 输入类型切换 */}
+          <div className="flex mt-4 bg-white/5 rounded-lg p-1">
+            <button
+              onClick={() => setInputType("id")}
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                inputType === "id"
+                  ? "bg-blue-500/20 text-blue-400"
+                  : "text-white/60 hover:text-white/80"
+              }`}
+            >
+              歌单ID
+            </button>
+            <button
+              onClick={() => setInputType("url")}
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                inputType === "url"
+                  ? "bg-blue-500/20 text-blue-400"
+                  : "text-white/60 hover:text-white/80"
+              }`}
+            >
+              完整链接
+            </button>
+          </div>
 
           <input
             type="text"
-            value={importUrl}
-            onChange={(e) => setImportUrl(e.target.value)}
-            placeholder="https://music.163.com/..."
-            className="w-full mt-5 bg-white/10 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:bg-white/10 transition-all text-[15px]"
+            value={importInput}
+            onChange={(e) => setImportInput(e.target.value)}
+            placeholder={
+              inputType === "id" 
+                ? "例如: 123456789" 
+                : "https://music.163.com/..."
+            }
+            className="w-full mt-3 bg-white/10 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:bg-white/10 transition-all text-[15px]"
             disabled={isLoading}
             autoFocus
             onKeyDown={(e) => {
@@ -82,6 +121,12 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
               }
             }}
           />
+          
+          {inputType === "id" && (
+            <p className="text-white/40 text-xs mt-2 px-1">
+              提示：在网易云音乐歌单页面URL中找到数字ID，例如 music.163.com/#/playlist?id=<span className="text-blue-400">123456789</span>
+            </p>
+          )}
         </div>
 
         {/* Action Buttons (iOS Style) */}
@@ -90,7 +135,7 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
             onClick={handleClose}
             className="py-4 text-[17px] text-white/60 font-medium hover:bg-white/5 transition-colors active:bg-white/10"
           >
-            Cancel
+            取消
           </button>
           <button
             onClick={handleImport}
@@ -122,10 +167,10 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                <span>Importing...</span>
+                <span>导入中...</span>
               </>
             ) : (
-              "Import"
+              "导入"
             )}
           </button>
         </div>

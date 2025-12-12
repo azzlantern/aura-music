@@ -232,7 +232,7 @@ export const usePlaylist = () => {
         return {
           success: false,
           message:
-            "Invalid Netease URL. Use https://music.163.com/#/song?id=... or playlist",
+            "无效的网易云音乐链接或ID。请使用正确的歌单ID或完整链接",
           songs: [],
         };
       }
@@ -266,7 +266,7 @@ export const usePlaylist = () => {
         console.error("Failed to fetch Netease music", err);
         return {
           success: false,
-          message: "Failed to load songs from URL",
+          message: "无法从链接加载歌曲，请检查网络连接或稍后重试",
           songs: [],
         };
       }
@@ -275,7 +275,7 @@ export const usePlaylist = () => {
       if (newSongs.length === 0) {
         return {
           success: false,
-          message: "Failed to load songs from URL",
+          message: "歌单为空或无法访问，请检查歌单ID是否正确",
           songs: [],
         };
       }
