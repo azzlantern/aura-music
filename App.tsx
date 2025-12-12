@@ -12,7 +12,7 @@ import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
-// import { APP_CONFIG } from "./config";
+import { APP_CONFIG } from "./config";
 
 const App: React.FC = () => {
   const { toast } = useToast();
