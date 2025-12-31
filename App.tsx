@@ -402,6 +402,7 @@ const App: React.FC = () => {
       <TopBar
         onFilesSelected={handleFileChange}
         onSearchClick={() => setShowSearch(true)}
+        isSidebarOpen={showPlaylist}
       />
 
       {/* Search Modal - Always rendered to preserve state, visibility handled internally */}

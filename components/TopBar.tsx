@@ -6,12 +6,14 @@ interface TopBarProps {
   onFilesSelected: (files: FileList) => void;
   onSearchClick: () => void;
   disabled?: boolean;
+  isSidebarOpen?: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
   onFilesSelected,
   onSearchClick,
   disabled,
+  isSidebarOpen = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
@@ -36,6 +38,9 @@ const TopBar: React.FC<TopBarProps> = ({
   };
 
   const activateTopBar = () => {
+    // If sidebar is open, do not activate top bar
+    if (isSidebarOpen) return;
+
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
     }
@@ -47,6 +52,9 @@ const TopBar: React.FC<TopBarProps> = ({
   };
 
   const handlePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    // If sidebar is open, ignore interactions
+    if (isSidebarOpen) return;
+
     if (event.pointerType !== "touch") {
       return;
     }
@@ -88,20 +96,27 @@ const TopBar: React.FC<TopBarProps> = ({
     e.target.value = "";
   };
 
+  // Logic: When sidebar is open, force hidden (opacity-0, pointer-events-none) and disable group-hover
   const baseTransitionClasses = "transition-all duration-500 ease-out";
-  const mobileActiveClasses = isTopBarActive
+
+  // If sidebar is open, force hidden state regardless of isTopBarActive
+  const mobileActiveClasses = (!isSidebarOpen && isTopBarActive)
     ? "opacity-100 translate-y-0 pointer-events-auto"
     : "opacity-0 -translate-y-2 pointer-events-none";
-  const hoverSupportClasses = "group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto";
+
+  // If sidebar is open, disable hover effects
+  const hoverSupportClasses = isSidebarOpen
+    ? ""
+    : "group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto";
 
   return (
     <div
-      className="fixed top-0 left-0 w-full h-14 z-[60] group"
+      className={`fixed top-0 left-0 w-full h-14 z-[60] group ${isSidebarOpen ? "pointer-events-none" : ""}`}
       onPointerDownCapture={handlePointerDownCapture}
     >
       {/* Blur Background Layer (Animate in) */}
       <div
-        className={`absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 transition-all duration-500 ${isTopBarActive ? "opacity-100" : "opacity-0"} group-hover:opacity-100`}
+        className={`absolute inset-0 bg-white/5 backdrop-blur-2xl border-b border-white/10 transition-all duration-500 ${(!isSidebarOpen && isTopBarActive) ? "opacity-100" : "opacity-0"} ${isSidebarOpen ? "" : "group-hover:opacity-100"}`}
       ></div>
 
       {/* Content (Animate in) */}
