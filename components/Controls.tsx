@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import Marquee from "./Marquee";
 import { useSpring, animated, useTransition, to } from "@react-spring/web";
 import { formatTime } from "../services/utils";
 import Visualizer from "./visualizer/Visualizer";
@@ -380,14 +381,22 @@ const Controls: React.FC<ControlsProps> = ({
         )}
         <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
       </animated.div>
+
+
       {/* Song Info */}
-      <div className="text-center mb-1 px-4 select-text cursor-text">
-        <h2 className="text-2xl font-bold tracking-tight drop-shadow-md line-clamp-1">
-          {title}
-        </h2>
-        <p className="text-white/60 text-lg font-medium line-clamp-1">
-          {artist}
-        </p>
+      <div className="text-center mb-1 px-4 select-text cursor-text flex flex-col items-center w-full z-10">
+        <div className="w-full max-w-[320px] min-h-[2.25rem] mb-1 flex items-center justify-center">
+          <h2 className="text-2xl font-bold tracking-tight drop-shadow-md text-balance leading-tight break-words py-1">
+            {title}
+          </h2>
+        </div>
+        <div className="w-full max-w-[280px] h-7 flex items-center justify-center overflow-hidden">
+          <Marquee
+            text={artist}
+            className="text-white/60 text-lg font-medium"
+            speed={30}
+          />
+        </div>
       </div>
 
       {/* Spectrum Visualizer */}
