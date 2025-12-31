@@ -84,10 +84,10 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
     // Handle animation visibility with react-spring
     const transitions = useTransition(isOpen, {
-        from: { opacity: 0, transform: 'translateX(20px)' },
-        enter: { opacity: 1, transform: 'translateX(0px)' },
-        leave: { opacity: 0, transform: 'translateX(20px)' },
-        config: { tension: 300, friction: 30 },
+        from: { opacity: 0, transform: 'translateY(20px) scale(0.95)' },
+        enter: { opacity: 1, transform: 'translateY(0px) scale(1)' },
+        leave: { opacity: 0, transform: 'translateY(20px) scale(0.95)' },
+        config: { tension: 280, friction: 24 }, // Rebound feel
         onRest: () => {
             if (!isOpen) {
                 setIsEditing(false);
@@ -197,16 +197,16 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
             {transitions((style, item) => item && (
                 <animated.div
                     ref={panelRef}
-                    style={style}
+                    style={{ ...style, maxHeight: '60vh' }}
                     className={`
-                        fixed top-0 bottom-0 right-0
-                        w-[50vw] max-w-[100vw]
-                        bg-black/40 backdrop-blur-[50px] saturate-150
-                        shadow-[-10px_0_30px_rgba(0,0,0,0.3)] 
-                        border-l border-white/10
-                        rounded-l-3xl
-                        z-50
+                        absolute bottom-24 -right-8 z-50
+                        w-[340px] 
+                        bg-black/10 backdrop-blur-[100px] saturate-150
+                        rounded-[32px] 
+                        shadow-[0_20px_50px_rgba(0,0,0,0.3)] 
+                        border border-white/5
                         flex flex-col overflow-hidden
+                        origin-bottom-right
                     `}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -284,16 +284,16 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
                                     return (
                                         <div
-                                            key={`${song.id} - ${index}`}
+                                            key={`${song.id}-${index}`}
                                             onClick={() => {
                                                 if (isEditing) toggleSelection(song.id);
                                                 else onPlay(index);
                                             }}
                                             className={`
-                                                absolute left-0 right-0 h-[66px]
-                                                group flex items-center gap-3 p-2 mx-2 rounded-2xl cursor-pointer transition-all duration-200
-                                                ${isEditing ? 'hover:bg-white/10' : isCurrent ? 'bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'hover:bg-white/5'}
-                                            `}
+                                    absolute left-0 right-0 h-[66px]
+                                    group flex items-center gap-3 p-2 mx-2 rounded-2xl cursor-pointer transition-all duration-200
+                                    ${isEditing ? 'hover:bg-white/10' : isCurrent ? 'bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'hover:bg-white/5'}
+                                `}
                                             style={{
                                                 top: `${index * ITEM_HEIGHT}px`,
                                                 // Adjust height within the slot if needed, ITEM_HEIGHT includes gap
@@ -303,9 +303,9 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                             {/* Edit Mode Checkbox */}
                                             {isEditing && (
                                                 <div className={`
-                                                    w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ml-1
-                                                    ${isSelected ? 'border-transparent' : 'border-white/20 group-hover:border-white/40'}
-                                                `}
+                                        w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ml-1
+                                        ${isSelected ? 'border-transparent' : 'border-white/20 group-hover:border-white/40'}
+                                    `}
                                                     style={{ backgroundColor: isSelected ? accentColor : 'transparent' }}
                                                 >
                                                     {isSelected && (
@@ -325,7 +325,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
-                                                )}
+                                               )}
 
                                                 {/* Redesigned Now Playing Indicator (Equalizer) */}
                                                 {isCurrent && !isEditing && (
@@ -341,10 +341,10 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                             `}</style>
                                                     </div>
                                                 )}
-                                            </div >
+                                            </div>
 
                                             {/* Text */}
-                                            < div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5" >
+                                            <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                                                 <div className={`text-[15px] font-semibold truncate leading-tight transition-colors duration-300`}
                                                     style={{ color: isCurrent ? accentColor : 'rgba(255,255,255,0.9)' }}>
                                                     {song.title}
@@ -352,15 +352,15 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                                 <div className="text-[13px] text-white/50 truncate font-medium">
                                                     {song.artist}
                                                 </div>
-                                            </div >
-                                        </div >
+                                            </div>
+                                        </div>
                                     );
                                 })}
-                            </div >
+                            </div>
                         )}
-                    </div >
+                    </div>
 
-                </animated.div >
+                </animated.div>
             ))}
 
             {/* Import Music Dialog */}

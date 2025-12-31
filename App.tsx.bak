@@ -306,7 +306,7 @@ const App: React.FC = () => {
           onPrev={playPrev}
           playMode={playMode}
           onToggleMode={toggleMode}
-          onTogglePlaylist={() => setShowPlaylist((prev) => !prev)}
+          onTogglePlaylist={() => setShowPlaylist(true)}
           accentColor={accentColor}
           volume={volume}
           onVolumeChange={setVolume}
@@ -322,6 +322,17 @@ const App: React.FC = () => {
           setShowSettingsPopup={setShowSettingsPopup}
         />
 
+        {/* Floating Playlist Panel */}
+        <PlaylistPanel
+          isOpen={showPlaylist}
+          onClose={() => setShowPlaylist(false)}
+          queue={playlist.queue}
+          currentSongId={currentSong?.id}
+          onPlay={playIndex}
+          onImport={handleImportUrl}
+          onRemove={playlist.removeSongs}
+          accentColor={accentColor}
+        />
       </div>
     </div>
   );
@@ -471,17 +482,6 @@ const App: React.FC = () => {
           {lyricsSection}
         </div>
       )}
-      {/* Playlist Sidebar/Drawer Overlay */}
-      <PlaylistPanel
-        isOpen={showPlaylist}
-        onClose={() => setShowPlaylist(false)}
-        queue={playlist.queue}
-        currentSongId={currentSong?.id}
-        onPlay={playIndex}
-        onImport={handleImportUrl}
-        onRemove={playlist.removeSongs}
-        accentColor={accentColor}
-      />
     </div>
   );
 };

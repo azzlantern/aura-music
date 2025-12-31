@@ -55,16 +55,16 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
                         Aura Music
                     </h3>
                     <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-[11px] font-medium text-white/40 tracking-wide uppercase mb-6">
-                        v1.4.0 • Web
+                        V2.0 • Web
                     </div>
 
                     {/* Description */}
                     <p className="text-white/70 text-[15px] leading-relaxed mb-8 font-medium">
-                        An experimental, pure web music player crafted with
+                        一个实验性的、纯网页音乐播放器，由
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 font-bold mx-1">
                             Vibe Coding
                         </span>
-                        technology.
+                        技术打造。
                     </p>
 
                     {/* Tech Stack Grid */}
@@ -77,7 +77,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
                     {/* Selection List */}
                     <div className="w-full flex flex-col gap-2 mb-6">
                         <a
-                            href="https://github.com/dingyi222666/aura-music"
+                            href="https://github.com/azzlantern/aura-music/"
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
@@ -88,13 +88,24 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
                         </a>
 
                         <a
+                            href="https://github.com/azzlantern"
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-between px-4 py-3 rounded-2xl border border-white/15 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 transition"
+                        >
+                            <span>Created by Jinyuan233</span>
+                            <span className="text-[11px] text-white/50">↗</span>
+                        </a>
+
+                        <a
                             href="https://github.com/dingyi222666"
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="flex items-center justify-between px-4 py-3 rounded-2xl border border-white/15 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 transition"
                         >
-                            <span>Created by dingyi222666</span>
+                            <span>Original by dingyi222666</span>
                             <span className="text-[11px] text-white/50">↗</span>
                         </a>
                     </div>
