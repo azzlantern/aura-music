@@ -133,36 +133,26 @@ const App: React.FC = () => {
   // 自动加载默认歌单 - 只在初始化时加载一次
   useEffect(() => {
     let isLoadingRef = false;
-    
+
     const loadDefaultPlaylist = async () => {
       // 避免重复加载
       if (isLoadingRef) return;
       isLoadingRef = true;
-      
+
       // 检查配置是否启用自动加载
       if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
-      
+
       // 检查是否已经有歌曲在队列中，避免重复加载
       if (playlist.queue.length > 0) return;
-      
+
       try {
         const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
         if (result.success && result.songs.length > 0) {
           console.log(`自动加载歌单成功：${result.songs.length} 首歌曲`);
-
-          // 根据配置决定是否自动播放
-          if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
-            setTimeout(() => {
-              handlePlaylistAddition(result.songs, true);
-            }, 100);
-          } else {
-            // 只添加到队列，不自动播放
-            setTimeout(() => {
-              handlePlaylistAddition(result.songs, false);
-            }, 100);
-          }
-
           toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
+          // 注意：此时不要立即调用 player.handlePlaylistAddition，
+          // 因为闭包中的 player可能还是旧的（originalQueue 为空）。
+          // 我们改为在下方监听 playlist.queue 的变化来触发播放。
         } else {
           console.warn("自动加载歌单失败:", result.message);
         }
@@ -174,7 +164,24 @@ const App: React.FC = () => {
     // 延迟一点时间确保所有组件都已初始化
     const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
     return () => clearTimeout(timer);
-  }, []);
+  }, []); // 空依赖数组，只运行一次
+
+  // 监听队列变化，处理初始加载后的自动播放
+  const hasAutoPlayedRef = useRef(false);
+
+  useEffect(() => {
+    // 如果队列为空，或者是已经自动播放过了，就忽略
+    if (playlist.queue.length === 0 || hasAutoPlayedRef.current) return;
+
+    // 只有在配置开启且是首次加载时才处理
+    if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
+      hasAutoPlayedRef.current = true;
+
+      // 此时组件已重新渲染，player.handlePlaylistAddition 能够访问到完整的 originalQueue
+      // 我们模拟一次“添加了所有歌曲”的事件，并标记 wasEmpty=true 以触发播放和 shuffle
+      player.handlePlaylistAddition(playlist.queue, true);
+    }
+  }, [playlist.queue.length, player, playlist.queue]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
