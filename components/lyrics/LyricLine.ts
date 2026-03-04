@@ -80,6 +80,8 @@ export class LyricLine implements ILyricLine {
     | OffscreenCanvasRenderingContext2D
     | CanvasRenderingContext2D;
   private cachedWordKey: string = "";
+  private liftCanvas: OffscreenCanvas | HTMLCanvasElement;
+  private liftCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
   constructor(line: LyricLineType, index: number, isMobile: boolean) {
     this.lyricLine = line;
@@ -88,13 +90,19 @@ export class LyricLine implements ILyricLine {
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     this.canvas = document.createElement("canvas");
     this.wordCacheCanvas = document.createElement("canvas");
+    this.liftCanvas = document.createElement("canvas");
     const ctx = this.canvas.getContext("2d");
     const cacheCtx = this.wordCacheCanvas.getContext("2d");
-    if (!ctx || !cacheCtx) throw new Error("Could not get canvas context");
+    const liftCtx = this.liftCanvas.getContext("2d");
+    if (!ctx || !cacheCtx || !liftCtx)
+      throw new Error("Could not get canvas context");
     this.ctx = ctx as
       | OffscreenCanvasRenderingContext2D
       | CanvasRenderingContext2D;
     this.wordCacheCtx = cacheCtx as
+      | OffscreenCanvasRenderingContext2D
+      | CanvasRenderingContext2D;
+    this.liftCtx = liftCtx as
       | OffscreenCanvasRenderingContext2D
       | CanvasRenderingContext2D;
   }
@@ -144,22 +152,27 @@ export class LyricLine implements ILyricLine {
 
     if (isActive && hasTimedWords) {
       const activeIdx = this.layout.words.findIndex(
-        (w) => currentTime >= w.startTime && currentTime < w.endTime
+        (w) => currentTime >= w.startTime && currentTime < w.endTime,
       );
 
       let currentWord: WordLayout | null = null;
       if (activeIdx !== -1) {
         currentWord = this.layout.words[activeIdx];
       } else {
-        const nextWordIdx = this.layout.words.findIndex(w => w.startTime > currentTime);
+        const nextWordIdx = this.layout.words.findIndex(
+          (w) => w.startTime > currentTime,
+        );
         if (nextWordIdx > 0) currentWord = this.layout.words[nextWordIdx - 1];
-        else if (nextWordIdx === -1) currentWord = this.layout.words[this.layout.words.length - 1];
+        else if (nextWordIdx === -1)
+          currentWord = this.layout.words[this.layout.words.length - 1];
         else currentWord = this.layout.words[0];
       }
 
       if (currentWord) {
         activeLineY = currentWord.y;
-        activeWords = this.layout.words.filter(w => Math.abs(w.y - activeLineY!) < 5);
+        activeWords = this.layout.words.filter(
+          (w) => Math.abs(w.y - activeLineY!) < 5,
+        );
         // Cursor calculation
         if (activeIdx !== -1) {
           const w = this.layout.words[activeIdx];
@@ -167,13 +180,17 @@ export class LyricLine implements ILyricLine {
           cursorX = w.x + w.width * p;
         } else {
           // Simplified gap logic
-          const nextIdx = this.layout.words.findIndex(w => w.startTime > currentTime);
-          if (nextIdx > 0) cursorX = this.layout.words[nextIdx - 1].x + this.layout.words[nextIdx - 1].width;
+          const nextIdx = this.layout.words.findIndex(
+            (w) => w.startTime > currentTime,
+          );
+          if (nextIdx > 0)
+            cursorX =
+              this.layout.words[nextIdx - 1].x +
+              this.layout.words[nextIdx - 1].width;
           else if (nextIdx === -1) {
             const last = this.layout.words[this.layout.words.length - 1];
             cursorX = last.x + last.width;
-          }
-          else cursorX = 0;
+          } else cursorX = 0;
         }
       }
     }
@@ -181,7 +198,8 @@ export class LyricLine implements ILyricLine {
     // 3. Rendering Strategy
     const firstWord = this.layout.words[0];
     const lastWord = this.layout.words[this.layout.words.length - 1];
-    const lineDuration = (firstWord && lastWord) ? lastWord.endTime - firstWord.startTime : 0;
+    const lineDuration =
+      firstWord && lastWord ? lastWord.endTime - firstWord.startTime : 0;
     const wordCount = this.layout.words.length;
     let fastWordCount = 0;
     for (const w of this.layout.words) {
@@ -189,26 +207,25 @@ export class LyricLine implements ILyricLine {
     }
 
     // Skip karaoke if line is too short (<0.8s) OR >60% of words are very fast (<0.2s)
-    const isFastLine = (wordCount > 0 && (fastWordCount / wordCount) > 0.9);
+    const isFastLine = wordCount > 0 && fastWordCount / wordCount > 0.9;
 
     if (isActive && (!hasTimedWords || isFastLine)) {
       // CASE: Active but standard text (no timing) -> Pure White
       this.ctx.fillStyle = "#FFFFFF";
-      this.layout.words.forEach(w => this.ctx.fillText(w.text, w.x, w.y));
-    }
-    else if (isActive && activeLineY !== null && activeWords.length > 0) {
+      this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
+    } else if (isActive && activeLineY !== null && activeWords.length > 0) {
       // CASE: Active with Timing -> Fluid Animation
 
       // Render static inactive lines first
       this.ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-      this.layout.words.forEach(w => {
+      this.layout.words.forEach((w) => {
         if (Math.abs(w.y - activeLineY!) >= 5) {
           // Past lines white, Future dim
           if (w.y < activeLineY!) {
             this.ctx.fillStyle = "#FFFFFF";
             this.ctx.fillText(w.text, w.x, w.y - 2); // Static Lift for past lines
           } else {
-            this.ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+            this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
             this.ctx.fillText(w.text, w.x, w.y);
           }
         }
@@ -216,20 +233,23 @@ export class LyricLine implements ILyricLine {
 
       // Render Active Line with Word-by-Word Effect
       this.drawActiveWords(activeWords, currentTime);
-
     } else {
       // CASE: Completely Inactive Line -> Dim
       this.ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-      this.layout.words.forEach(w => this.ctx.fillText(w.text, w.x, w.y));
+      this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
     }
 
     // 4. Translation
-    if (this.layout.translationLines && this.layout.translationLines.length > 0) {
+    if (
+      this.layout.translationLines &&
+      this.layout.translationLines.length > 0
+    ) {
       this.ctx.font = transFont;
       this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-      const lastWordY = this.layout.words.length > 0
-        ? this.layout.words[this.layout.words.length - 1].y
-        : 0;
+      const lastWordY =
+        this.layout.words.length > 0
+          ? this.layout.words[this.layout.words.length - 1].y
+          : 0;
       let transY = lastWordY + mainHeight * 1.2;
       this.layout.translationLines.forEach((lineText) => {
         this.ctx.fillText(lineText, 0, transY);
@@ -241,98 +261,158 @@ export class LyricLine implements ILyricLine {
   }
 
   private drawActiveWords(activeWords: WordLayout[], currentTime: number) {
-    const FLOAT_DURATION = 0.250;
-    const MAX_LIFT = -2;
+    // --- Compute singing cursor in pixel space ---
+    let waveFrontX = 0;
+    for (let i = 0; i < activeWords.length; i++) {
+      const w = activeWords[i];
+      const duration = w.endTime - w.startTime;
+      if (duration <= 0) continue;
+      const elapsed = currentTime - w.startTime;
+      if (elapsed < 0) break;
+      if (elapsed < duration) {
+        waveFrontX = w.x + w.width * (elapsed / duration);
+        break;
+      }
+      waveFrontX = w.x + w.width;
+    }
+
+    // --- Separate glow words from normal words ---
+    // Glow words are drawn individually; all other words are batched into
+    // one continuous buffer so the lift curve flows seamlessly across word
+    // boundaries.
+    const liftWords: WordLayout[] = [];
 
     activeWords.forEach((w) => {
       const duration = w.endTime - w.startTime;
       const elapsed = currentTime - w.startTime;
       const isWordActive = elapsed >= 0 && elapsed < duration;
 
-      // Check condition for Glow Animation
-      // Apply glow only to short words (length <= 7) that are currently playing
-      if (w.text.length <= 7 && duration > 1.5 && isWordActive) {
+      if (
+        w.text.length > 1 &&
+        w.text.length <= 7 &&
+        duration > 1.5 &&
+        isWordActive
+      ) {
+        // Glow — rendered individually
         this.ctx.save();
         this.ctx.translate(w.x, w.y);
 
-        const progress = Math.max(0, Math.min(1, elapsed / duration));
-
-        // Smooth transition for glow intensity (fade in/out)
-        // 1. Attack: Quick fade in (0 -> 1)
-        // 2. Sustain: Hold
-        // 3. Release: Fade out (1 -> 0) near the end
         let glowIntensity = 1;
-        const fadeDuration = 0.2; // Seconds for fade
+        const fadeDuration = 0.2;
         const fadeOutStart = Math.max(0, duration - fadeDuration);
 
         if (elapsed < fadeDuration) {
-          // Fade In
           glowIntensity = Math.min(1, elapsed / fadeDuration);
-          // Use ease out for smoother entry
           glowIntensity = 1 - Math.pow(1 - glowIntensity, 3);
         } else if (elapsed > fadeOutStart) {
-          // Fade Out
           const fadeOutProgress = (elapsed - fadeOutStart) / fadeDuration;
           glowIntensity = Math.max(0, 1 - fadeOutProgress);
         }
 
-        // Combine with breath envelope if needed, but simpler is often better for "glow"
-        // The original code used `computeBreathEnvelope` which is mostly for attack.
-        // We can combine them:
-        // const decay = this.computeBreathEnvelope(progress, false, 0);
-        // Let's rely on our explicit fade logic for the "presence" of the effect.
-
         this.drawGlowAnimation(w, elapsed, duration, glowIntensity);
         this.ctx.restore();
       } else {
-        // Standard Rendering (Floating + Gradient)
-        let lift = 0;
-        if (elapsed > 0) {
-          // Fast float with curve
-          const floatProgress = Math.min(1, elapsed / FLOAT_DURATION);
-
-          // Ease In Out Quad (Softer than cubic, less "snappy")
-          const ease =
-            floatProgress < 0.5
-              ? 2 * floatProgress * floatProgress
-              : 1 - Math.pow(-2 * floatProgress + 2, 2) / 2;
-
-          lift = MAX_LIFT * ease;
-        }
-
-        this.ctx.save();
-
-        this.ctx.translate(w.x, w.y + lift);
-
-        if (elapsed >= duration) {
-          // Past
-          this.ctx.fillStyle = "#FFFFFF";
-          this.ctx.fillText(w.text, 0, 0);
-        } else if (elapsed < 0) {
-          // Future
-          this.ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-          this.ctx.fillText(w.text, 0, 0);
-        } else {
-          // Active
-          // Gradient fill
-          const gradient = this.ctx.createLinearGradient(0, 0, w.width, 0);
-          const p = elapsed / duration;
-
-          gradient.addColorStop(Math.max(0, p), "#FFFFFF");
-          gradient.addColorStop(
-            Math.min(1, p + 0.15),
-            "rgba(255, 255, 255, 0.3)"
-          );
-
-          this.ctx.fillStyle = gradient;
-          this.ctx.fillText(w.text, 0, 0);
-        }
-        this.ctx.restore();
+        liftWords.push(w);
       }
     });
+
+    // --- Draw all non-glow words as one continuous lifted line ---
+    if (liftWords.length > 0) {
+      this.drawLiftedLine(liftWords, waveFrontX, currentTime);
+    }
   }
 
+  /**
+   * Draw non-glow words with float.
+   *
+   * Each word is rasterized at y=0 on an offscreen canvas (optimal font
+   * hinting), then `drawImage`'d at the float offset.  `drawImage` at
+   * fractional coordinates uses bilinear interpolation → silky smooth
+   * sub-pixel movement, identical to how the GPU compositor handles
+   * CSS `transform: translateY()`.
+   */
+  private drawLiftedLine(
+    words: WordLayout[],
+    waveFrontX: number,
+    currentTime: number,
+  ) {
+    const { main, mainHeight } = getFonts(this.isMobile);
+    const FLOAT_UP = 0.05 * mainHeight; // 0.05em
+    // Horizontal padding (logical px) to prevent clipping from
+    // negative left side bearing or characters wider than measureText
+    const PAD = 6;
 
+    // Ensure offscreen canvas is large enough for the widest word + padding
+    let maxW = 0;
+    for (const w of words) if (w.width > maxW) maxW = w.width;
+    const bufW = Math.ceil((maxW + PAD * 2) * this.pixelRatio);
+    const bufH = Math.ceil(mainHeight * 1.5 * this.pixelRatio);
+    if (this.liftCanvas.width < bufW || this.liftCanvas.height < bufH) {
+      this.liftCanvas.width = Math.max(this.liftCanvas.width, bufW);
+      this.liftCanvas.height = Math.max(this.liftCanvas.height, bufH);
+    }
+
+    for (const w of words) {
+      const elapsed = currentTime - w.startTime;
+      const duration = w.endTime - w.startTime;
+
+      // --- Rasterize word at x=PAD on offscreen canvas (leave room for overhang) ---
+      const wordPxW = Math.ceil((w.width + PAD * 2) * this.pixelRatio);
+      this.liftCtx.clearRect(
+        0,
+        0,
+        this.liftCanvas.width,
+        this.liftCanvas.height,
+      );
+      this.liftCtx.save();
+      this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
+      this.liftCtx.font = main;
+      this.liftCtx.textBaseline = "top";
+
+      if (elapsed >= duration) {
+        this.liftCtx.fillStyle = "#FFFFFF";
+      } else if (elapsed < 0) {
+        this.liftCtx.fillStyle = "rgba(255, 255, 255, 0.5)";
+      } else {
+        // Gradient starts at PAD (where the text starts)
+        const grad = this.liftCtx.createLinearGradient(
+          PAD,
+          0,
+          PAD + w.width,
+          0,
+        );
+        const p = elapsed / duration;
+        grad.addColorStop(Math.max(0, p), "#FFFFFF");
+        grad.addColorStop(Math.min(1, p + 0.15), "rgba(255, 255, 255, 0.5)");
+        this.liftCtx.fillStyle = grad;
+      }
+
+      this.liftCtx.fillText(w.text, PAD, 0);
+      this.liftCtx.restore();
+
+      // --- Float: starts when word begins, ease-out over word duration ---
+      let lift = 0;
+      if (elapsed >= 0) {
+        const floatDur = Math.max(1.0, duration);
+        const t = Math.min(1, elapsed / floatDur);
+        lift = FLOAT_UP * t * (2 - t); // ease-out quadratic
+      }
+
+      // --- drawImage at float position (smooth sub-pixel interpolation) ---
+      // Offset destination by -PAD to compensate for the padding in the buffer
+      this.ctx.drawImage(
+        this.liftCanvas,
+        0,
+        0,
+        wordPxW,
+        bufH,
+        w.x - PAD,
+        w.y - lift,
+        wordPxW / this.pixelRatio,
+        mainHeight * 1.5,
+      );
+    }
+  }
 
   private easeProgress(word: WordLayout, target: number) {
     if (word.renderProgress === undefined) {
@@ -353,7 +433,7 @@ export class LyricLine implements ILyricLine {
   private computeBreathEnvelope(
     progress: number,
     isTransitioning: boolean,
-    transitionProgress: number
+    transitionProgress: number,
   ): number {
     // Envelope mostly handles the "Attack" phase of the word.
     // Sustain and Release are handled by the wave and decay logic in drawGlowAnimation.
@@ -372,7 +452,7 @@ export class LyricLine implements ILyricLine {
   private computeWaveActivation(
     charIndex: number,
     charCount: number,
-    progress: number
+    progress: number,
   ): { activation: number; waveIntensity: number } {
     const { wavelength } = WAVE_PHYSICS;
 
@@ -385,7 +465,7 @@ export class LyricLine implements ILyricLine {
     // Gaussian wave packet for intensity (flash)
     const sigma = wavelength / 2.5;
     const waveIntensity = Math.exp(
-      -(distFromFront * distFromFront) / (2 * sigma * sigma)
+      -(distFromFront * distFromFront) / (2 * sigma * sigma),
     );
 
     // Activation: 1 if wave has passed (swept area)
@@ -424,7 +504,7 @@ export class LyricLine implements ILyricLine {
     word: WordLayout,
     elapsed: number,
     duration: number,
-    decayFactor: number
+    decayFactor: number,
   ) {
     const chars = word.text.split("");
 
@@ -437,7 +517,7 @@ export class LyricLine implements ILyricLine {
     if (!word.charWidths || !word.charOffsets) {
       const { charWidths, charOffsets } = this.computeCharMetrics(
         word.text,
-        mainHeight
+        mainHeight,
       );
 
       word.charWidths = charWidths;
@@ -463,7 +543,7 @@ export class LyricLine implements ILyricLine {
         0,
         0,
         this.wordCacheCanvas.width,
-        this.wordCacheCanvas.height
+        this.wordCacheCanvas.height,
       );
       this.wordCacheCtx.save();
       this.wordCacheCtx.scale(this.pixelRatio, this.pixelRatio);
@@ -483,14 +563,14 @@ export class LyricLine implements ILyricLine {
     const charLifts: number[] = [];
 
     let totalDynamicWidth = 0;
-    const MAX_LIFT = -2;
+    const MAX_LIFT = -1;
 
     // 1. Compute scales and dynamics for all characters
     chars.forEach((char, charIndex) => {
       const { activation, waveIntensity } = this.computeWaveActivation(
         charIndex,
         charCount,
-        progress
+        progress,
       );
 
       // Scale Logic:
@@ -530,7 +610,7 @@ export class LyricLine implements ILyricLine {
       let lift = activation * MAX_LIFT;
 
       // Optional: Add a slight bounce at the peak if desired, using waveIntensity
-      // lift -= waveIntensity * 1; 
+      // lift -= waveIntensity * 1;
 
       charLifts.push(lift);
     });
@@ -591,10 +671,10 @@ export class LyricLine implements ILyricLine {
             // Drawing at (currentX, lift) might be double applying offset if not careful.
             // Let's look at previous logic:
             // prev: this.ctx.translate(charCenterX, charCenterY); ... ctx.translate(-charCenterX, -charCenterY);
-            // prev draw: dx = currentX, dy = lift. 
+            // prev draw: dx = currentX, dy = lift.
             // This is correct because the context matches the "grid" position, and we draw at the specific slot.
             originalWidth,
-            sHeight / this.pixelRatio
+            sHeight / this.pixelRatio,
           );
         }
 
@@ -618,9 +698,7 @@ export class LyricLine implements ILyricLine {
   }
 
   public measure(containerWidth: number, suggestedTranslationWidth?: number) {
-    const { main, trans, mainHeight, transHeight } = getFonts(
-      this.isMobile
-    );
+    const { main, trans, mainHeight, transHeight } = getFonts(this.isMobile);
 
     const baseSize = this.isMobile ? 32 : 40;
     const paddingY = 18;
@@ -670,10 +748,7 @@ export class LyricLine implements ILyricLine {
         suggestedTranslationWidth &&
         suggestedTranslationWidth > translationWrapWidth
       ) {
-        translationWrapWidth = Math.min(
-          suggestedTranslationWidth,
-          maxWidth
-        );
+        translationWrapWidth = Math.min(suggestedTranslationWidth, maxWidth);
       }
 
       const translationResult = this.measureTranslationLines({
@@ -735,9 +810,7 @@ export class LyricLine implements ILyricLine {
       this.lastIsHovered === isHovered;
     if (stateUnchanged) return;
 
-    const { main, trans, mainHeight, transHeight } = getFonts(
-      this.isMobile
-    );
+    const { main, trans, mainHeight, transHeight } = getFonts(this.isMobile);
 
     const paddingX = this.isMobile ? 24 : 56;
     const hasTimedWords = this.layout.words.some((w) => w.isVerbatim);
@@ -814,7 +887,7 @@ export class LyricLine implements ILyricLine {
       text: string,
       start: number,
       end: number,
-      isVerbatim: boolean
+      isVerbatim: boolean,
     ) => {
       const metrics = this.ctx.measureText(text);
       let width = metrics.width;
@@ -829,7 +902,7 @@ export class LyricLine implements ILyricLine {
 
       const { charWidths, charOffsets } = this.computeCharMetrics(
         text,
-        baseSize
+        baseSize,
       );
 
       words.push({
@@ -894,8 +967,7 @@ export class LyricLine implements ILyricLine {
     let maxLineWidth = 0;
 
     atoms.forEach((atom: string, index: number) => {
-      const atomText =
-        isEn && index < atoms.length - 1 ? atom + " " : atom;
+      const atomText = isEn && index < atoms.length - 1 ? atom + " " : atom;
 
       const width = this.ctx.measureText(atomText).width;
 
