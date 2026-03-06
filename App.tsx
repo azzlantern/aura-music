@@ -244,6 +244,7 @@ const App: React.FC = () => {
           onPlayPause={togglePlay}
           currentTime={currentTime}
           duration={duration}
+          trackId={currentSong?.id || "no-song"}
           onSeek={handleSeek}
           title={currentSong?.title || "Welcome to Aura"}
           artist={currentSong?.artist || "Select a song"}
@@ -266,25 +267,27 @@ const App: React.FC = () => {
           setShowVolumePopup={setShowVolumePopup}
           showSettingsPopup={showSettingsPopup}
           setShowSettingsPopup={setShowSettingsPopup}
-        />
-
-        {/* Floating Playlist Panel */}
-        <PlaylistPanel
-          isOpen={showPlaylist}
-          onClose={() => setShowPlaylist(false)}
-          queue={playlist.queue}
-          currentSongId={currentSong?.id}
-          onPlay={playIndex}
-          onImport={handleImportUrl}
-          onRemove={playlist.removeSongs}
-          accentColor={accentColor}
+          playlistPanel={
+            <PlaylistPanel
+              isOpen={showPlaylist}
+              onClose={() => setShowPlaylist(false)}
+              queue={playlist.queue}
+              currentSongId={currentSong?.id}
+              onPlay={playIndex}
+              onImport={handleImportUrl}
+              onRemove={playlist.removeSongs}
+              accentColor={accentColor}
+            />
+          }
         />
       </div>
     </div>
   );
 
   const lyricsVersion = currentSong?.lyrics ? currentSong.lyrics.length : 0;
-  const lyricsKey = currentSong ? `${currentSong.id}-${lyricsVersion}` : "no-song";
+  const lyricsKey = currentSong
+    ? `${currentSong.id}-${lyricsVersion}`
+    : "no-song";
 
   const lyricsSection = (
     <div className="w-full h-full relative z-20 flex flex-col justify-center px-4 lg:pl-12">
@@ -416,8 +419,9 @@ const App: React.FC = () => {
               }}
             >
               <span
-                className={`absolute inset-0 rounded-full bg-white/25 backdrop-blur-[30px] transition-opacity duration-200 ${activePanel === "controls" ? "opacity-90" : "opacity-60"
-                  }`}
+                className={`absolute inset-0 rounded-full bg-white/25 backdrop-blur-[30px] transition-opacity duration-200 ${
+                  activePanel === "controls" ? "opacity-90" : "opacity-60"
+                }`}
               />
             </button>
           </div>

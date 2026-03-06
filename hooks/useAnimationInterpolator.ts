@@ -268,8 +268,8 @@ export class LineAnimationState {
     this.hover = new SmoothValue(0, 0.06);
     // Press: snappy spring with slight overshoot
     this.press = new SpringValue(1, SpringPresets.press);
-    // Blur: ~120ms smooth transition
-    this.blur = new SmoothValue(0, 0.10);
+    // Blur: slightly slower than hover so the focus shift reads clearly
+    this.blur = new SmoothValue(0, 0.14);
   }
 
   /**
@@ -292,6 +292,7 @@ export class LineAnimationState {
     this.press.update(dt);
 
     // Blur: smooth approach to target blur
+    this.blur.setTau(targetBlur > this.blur.getCurrent() ? 0.12 : 0.18);
     this.blur.setTarget(targetBlur);
     this.blur.update(dt);
 

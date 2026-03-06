@@ -1,10 +1,9 @@
+import { getPalette } from "colorthief";
+import jsmediatags from "jsmediatags/dist/jsmediatags.min.js";
+
 import { LyricLine } from "../types";
 import { parseLyrics } from "./lyrics";
 import { loadImageElementWithCache } from "./cache";
-
-// Declare global for the script loaded in index.html
-declare const jsmediatags: any;
-declare const ColorThief: any;
 
 export const formatTime = (seconds: number): string => {
   if (isNaN(seconds)) return "0:00";
@@ -120,15 +119,9 @@ export const parseAudioMetadata = (
   lyrics?: string;
 }> => {
   return new Promise((resolve) => {
-    if (typeof jsmediatags === "undefined") {
-      console.warn("jsmediatags not loaded");
-      resolve({});
-      return;
-    }
-
     try {
       jsmediatags.read(file, {
-        onSuccess: (tag: any) => {
+        onSuccess: (tag) => {
           try {
             const tags = tag.tags;
             let pictureUrl = undefined;
@@ -169,7 +162,7 @@ export const parseAudioMetadata = (
             resolve({});
           }
         },
-        onError: (error: any) => {
+        onError: (error) => {
           console.warn("Error reading tags:", error);
           resolve({});
         },
@@ -181,37 +174,82 @@ export const parseAudioMetadata = (
   });
 };
 
-export const extractColors = async (imageSrc: string): Promise<string[]> => {
-  if (typeof ColorThief === "undefined") {
-    console.warn("ColorThief not loaded");
-    return ["#4f46e5", "#db2777", "#1f2937"];
-  }
+const colorLum = (rgb: number[]) => {
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+};
 
+const colorSat = (rgb: number[]) => {
+  return Math.max(...rgb) - Math.min(...rgb);
+};
+
+const colorDist = (a: number[], b: number[]) => {
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return dr * dr + dg * dg + db * db;
+};
+
+const colorScore = (rgb: number[]) => {
+  const lum = colorLum(rgb);
+  const sat = colorSat(rgb);
+  const balance = 1 - Math.min(1, Math.abs(lum - 140) / 140);
+  return sat * 0.7 + balance * 90;
+};
+
+export const extractColors = async (imageSrc: string): Promise<string[]> => {
   try {
     const img = await loadImageElementWithCache(imageSrc);
-    const colorThief = new ColorThief();
-    const palette = colorThief.getPalette(img, 5);
+    const colors = await getPalette(img, { colorCount: 20 });
+    const palette = colors?.map((item) => item.array()) ?? [];
 
     if (!palette || palette.length === 0) {
       return [];
     }
 
-    const vibrantCandidates = palette.filter((rgb: number[]) => {
-      const lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-      return lum > 30;
+    const filtered = palette.filter((rgb) => {
+      const lum = colorLum(rgb);
+      const sat = colorSat(rgb);
+      if (lum < 20) return false;
+      if (lum > 240 && sat < 30) return false;
+      if (sat < 15 && lum > 200) return false;
+      return true;
     });
 
-    const candidates =
-      vibrantCandidates.length > 0 ? vibrantCandidates : palette;
+    const candidates = filtered.length >= 6 ? filtered : palette;
 
-    candidates.sort((a: number[], b: number[]) => {
-      const satA = Math.max(...a) - Math.min(...a);
-      const satB = Math.max(...b) - Math.min(...b);
-      return satB - satA;
-    });
+    // Sort by vibrance and contrast score
+    const ranked = candidates.slice().sort((a: number[], b: number[]) => colorScore(b) - colorScore(a));
 
-    const topColors = candidates.slice(0, 4);
-    return topColors.map((c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+    const picked: number[][] = [];
+    // Pass 1: Strict distance for max diversity
+    for (const rgb of ranked) {
+      if (picked.some((item) => colorDist(item, rgb) < 1400)) continue;
+      picked.push(rgb);
+    }
+
+    // Pass 2: Lower distance threshold if we don't have enough colors
+    if (picked.length < 8) {
+      for (const rgb of ranked) {
+        if (picked.includes(rgb)) continue;
+        if (picked.some((item) => colorDist(item, rgb) < 400)) continue;
+        picked.push(rgb);
+        if (picked.length >= 8) break;
+      }
+    }
+
+    // Pass 3: Just add remaining colors if we are still desperate
+    if (picked.length < 6) {
+      for (const rgb of palette) {
+        if (picked.includes(rgb)) continue;
+        picked.push(rgb);
+        if (picked.length >= 6) break;
+      }
+    }
+
+    console.log(picked);
+
+    // Return the top ~10 diverse colors
+    return picked.slice(0, 10).map((c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
   } catch (err) {
     console.warn("Color extraction failed", err);
     return [];

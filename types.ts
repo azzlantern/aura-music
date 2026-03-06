@@ -5,8 +5,10 @@ export interface LyricWord {
 }
 
 export interface LyricLine {
+  key?: string; // Source lyric key (e.g. TTML itunes:key)
   time: number; // Start time in seconds
   endTime?: number; // End time in seconds (from TTML <p> end or last word)
+  _endTime?: number; // Derived playback window end used for UI handoff logic
   text: string; // Main text (e.g. Original Language)
   translation?: string; // Secondary text (e.g. Translation)
   romanization?: string; // Optional romanized lyric line

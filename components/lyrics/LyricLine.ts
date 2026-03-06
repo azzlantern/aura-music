@@ -15,11 +15,12 @@ const EMPHASIS_SPLIT = 0.5;
 const BG_LEAD = 0.9;
 const BG_TRAIL = 0.45;
 const BG_FONT_SCALE = 0.76;
-const BG_ACTIVE_ALPHA = 0.58;
-const BG_PAST_ALPHA = 0.5;
-const BG_FUTURE_ALPHA = 0.2;
-const BG_IDLE_ALPHA = 0.12;
-const BG_TRANS_ALPHA = 0.42;
+const BG_ACTIVE_ALPHA = 0.78;
+const BG_PAST_ALPHA = 0.68;
+const BG_FUTURE_ALPHA = 0.42;
+const BG_IDLE_ALPHA = 0.24;
+const BG_TRANS_ALPHA = 0.74;
+const TRANS_ALPHA = 0.8;
 const BG_SPRING: SpringConfig = {
   mass: 0.95,
   stiffness: 150,
@@ -666,7 +667,7 @@ export class LyricLine implements ILyricLine {
       this.ctx.font = transFont;
       this.ctx.fillStyle = isBackground
         ? `rgba(255, 255, 255, ${BG_TRANS_ALPHA})`
-        : "rgba(255, 255, 255, 0.5)";
+        : `rgba(255, 255, 255, ${TRANS_ALPHA})`;
       const baseY = lastWordY + mainHeight * 1.2;
       let y = baseY;
       this.layout.translationLines!.forEach((lineText) => {
@@ -718,12 +719,15 @@ export class LyricLine implements ILyricLine {
     const scale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
     const { main, mainHeight } = getFonts(this.isMobile, scale);
     const FLOAT_UP = 0.05 * mainHeight;
-    const PAD = 6;
+    const sidePad = 6;
+    const topPad = Math.max(4, Math.ceil(mainHeight * 0.18));
+    const bottomPad = Math.max(8, Math.ceil(mainHeight * 0.32));
+    const logicalHeight = mainHeight + topPad + bottomPad;
 
     let maxW = 0;
     for (const w of words) if (w.width > maxW) maxW = w.width;
-    const bufW = Math.ceil((maxW + PAD * 2) * this.pixelRatio);
-    const bufH = Math.ceil(mainHeight * 1.5 * this.pixelRatio);
+    const bufW = Math.ceil((maxW + sidePad * 2) * this.pixelRatio);
+    const bufH = Math.ceil(logicalHeight * this.pixelRatio);
     if (this.liftCanvas.width < bufW || this.liftCanvas.height < bufH) {
       this.liftCanvas.width = Math.max(this.liftCanvas.width, bufW);
       this.liftCanvas.height = Math.max(this.liftCanvas.height, bufH);
@@ -734,7 +738,7 @@ export class LyricLine implements ILyricLine {
       const duration = w.endTime - w.startTime;
       const safeDuration = Math.max(0.001, duration);
 
-      const wordPxW = Math.ceil((w.width + PAD * 2) * this.pixelRatio);
+      const wordPxW = Math.ceil((w.width + sidePad * 2) * this.pixelRatio);
       this.liftCtx.clearRect(
         0,
         0,
@@ -756,9 +760,9 @@ export class LyricLine implements ILyricLine {
           : "rgba(255, 255, 255, 0.5)";
       } else {
         const grad = this.liftCtx.createLinearGradient(
-          PAD,
+          sidePad,
           0,
-          PAD + w.width,
+          sidePad + w.width,
           0,
         );
         const p = elapsed / safeDuration;
@@ -778,7 +782,7 @@ export class LyricLine implements ILyricLine {
         this.liftCtx.fillStyle = grad;
       }
 
-      this.liftCtx.fillText(w.text, PAD, 0);
+      this.liftCtx.fillText(w.text, sidePad, topPad);
       this.liftCtx.restore();
 
       let lift = 0;
@@ -794,10 +798,10 @@ export class LyricLine implements ILyricLine {
         0,
         wordPxW,
         bufH,
-        w.x - PAD,
-        w.y - lift,
+        w.x - sidePad,
+        w.y - lift - topPad,
         wordPxW / this.pixelRatio,
-        mainHeight * 1.5,
+        logicalHeight,
       );
     }
   }
@@ -1018,7 +1022,7 @@ export class LyricLine implements ILyricLine {
     );
 
     const baseSize = (this.isMobile ? 32 : 40) * fontScale;
-    const paddingY = 18;
+    const paddingY = this.isMobile ? 18 : 24;
     const paddingX = this.isMobile ? 24 : 56;
     // Duet lines get reduced max width (~65% of container)
     const duetRatio = this.lyricLine.isDuet ? (this.isMobile ? 0.88 : 0.78) : 1;

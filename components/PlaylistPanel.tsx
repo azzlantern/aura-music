@@ -199,7 +199,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                     ref={panelRef}
                     style={{ ...style, maxHeight: '60vh' }}
                     className={`
-                        absolute bottom-24 -right-8 z-50
+                        absolute bottom-full right-0 mb-4 z-50
                         w-[340px] 
                         bg-black/10 backdrop-blur-[100px] saturate-150
                         rounded-[32px] 
@@ -325,7 +325,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
-                                               )}
+                                                )}
 
                                                 {/* Redesigned Now Playing Indicator (Equalizer) */}
                                                 {isCurrent && !isEditing && (

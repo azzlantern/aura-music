@@ -13,8 +13,13 @@ type Mode = "line" | "word";
 interface Seg {
   parts: string[];
   words: LyricWord[];
-  translation: string[];
+  translation: Alt[];
   roman: string[];
+}
+
+interface Alt {
+  text: string;
+  lang?: string;
 }
 
 interface Rich {
@@ -218,6 +223,64 @@ const appendMeta = (base: string | undefined, parts: string[], sep: string): str
   return list.join(sep);
 };
 
+const langOf = (attrs: Record<string, string>): string | undefined => {
+  return attrs["@_xml:lang"] || attrs["@_lang"] || attrs["@_xml_lang"];
+};
+
+const HAN_REGEX = /\p{Script=Han}/u;
+const KANA_REGEX = /\p{Script=Hiragana}|\p{Script=Katakana}/u;
+const HANGUL_REGEX = /\p{Script=Hangul}/u;
+
+const hasHan = (text: string): boolean => {
+  return HAN_REGEX.test(text);
+};
+
+const looksChinese = (text: string): boolean => {
+  if (!hasHan(text)) return false;
+  if (KANA_REGEX.test(text)) return false;
+  if (HANGUL_REGEX.test(text)) return false;
+  return true;
+};
+
+const chineseRankOf = (lang?: string): number | null => {
+  const value = lang?.trim().toLowerCase();
+  if (!value) return null;
+  if (!/^zh(?:-|$)/.test(value)) return null;
+  if (/^zh(?:-hans|-cn|-sg)/.test(value)) return 0;
+  if (value === "zh") return 1;
+  if (/^zh(?:-hant|-tw|-hk|-mo)/.test(value)) return 2;
+  return 1;
+};
+
+const keepChineseTranslation = (text: string, lang?: string): boolean => {
+  const rank = chineseRankOf(lang);
+  if (rank !== null) return true;
+  return !lang && looksChinese(text);
+};
+
+const joinChinese = (parts: Alt[], sep: string): string | undefined => {
+  if (parts.length === 0) return undefined;
+
+  const list = parts
+    .filter((part) => keepChineseTranslation(part.text, part.lang))
+    .map((part) => ({
+      text: normalizeJoinedText(part.text),
+      rank: chineseRankOf(part.lang) ?? 3,
+    }))
+    .filter((part) => part.text);
+
+  if (list.length === 0) return undefined;
+
+  const rank = Math.min(...list.map((part) => part.rank));
+  const texts = list
+    .filter((part) => part.rank === rank)
+    .map((part) => part.text)
+    .filter((part, idx, arr) => arr.indexOf(part) === idx);
+
+  if (texts.length === 0) return undefined;
+  return texts.join(sep);
+};
+
 const roleOf = (attrs: Record<string, string>): string | undefined => {
   return attrs["@_ttm:role"] || attrs["@_role"] || attrs["@_ttm_role"];
 };
@@ -368,7 +431,9 @@ const parseRich = (
 
     if (role === "x-translation") {
       const text = textOfItems(kids);
-      if (text) rich.main.translation.push(text);
+      if (text && keepChineseTranslation(text, langOf(attrs))) {
+        rich.main.translation.push({ text, lang: langOf(attrs) });
+      }
       continue;
     }
 
@@ -482,6 +547,7 @@ const parseP = (item: any, rootMode?: Mode, scope: Scope = {}): Entry[] => {
 
   if (hasMain) {
     const line: LyricLine = {
+      key,
       time,
       text: text || mainWords.map((word) => word.text).join(""),
     };
@@ -493,8 +559,8 @@ const parseP = (item: any, rootMode?: Mode, scope: Scope = {}): Entry[] => {
       line.isPreciseTiming = true;
     }
 
-    const translation = joinMeta(rich.main.translation, "\n");
-    if (translation) line.translation = translation;
+  const translation = joinChinese(rich.main.translation, "\n");
+  if (translation) line.translation = translation;
 
     const roman = joinMeta(rich.main.roman, " ");
     if (roman) line.romanization = roman;
@@ -505,6 +571,7 @@ const parseP = (item: any, rootMode?: Mode, scope: Scope = {}): Entry[] => {
   if (hasBg) {
     const bgTime = bgWords[0]?.startTime ?? time;
     const line: LyricLine = {
+      key,
       time: bgTime,
       text: bgText || bgWords.map((word) => word.text).join(""),
       isBackground: true,
@@ -521,8 +588,8 @@ const parseP = (item: any, rootMode?: Mode, scope: Scope = {}): Entry[] => {
       line.isPreciseTiming = true;
     }
 
-    const translation = joinMeta(rich.bg.translation, "\n");
-    if (translation) line.translation = translation;
+  const translation = joinChinese(rich.bg.translation, "\n");
+  if (translation) line.translation = translation;
 
     const roman = joinMeta(rich.bg.roman, " ");
     if (roman) line.romanization = roman;
@@ -615,7 +682,17 @@ const pushAux = (map: Map<string, Aux>, key: string, field: keyof Aux, text: str
 
 const parseTrack = (items: any[], tag: "translation" | "transliteration", field: keyof Aux, bgField: keyof Aux, map: Map<string, Aux>): void => {
   for (const box of items) {
-    for (const track of pick(kidsOf(box), tag)) {
+    const tracks = pick(kidsOf(box), tag);
+    const chosen = tag === "translation"
+      ? tracks
+          .map((track) => ({ track, rank: chineseRankOf(langOf(attrsOf(track))) }))
+          .filter((item) => item.rank !== null)
+          .sort((a, b) => (a.rank as number) - (b.rank as number))
+          .slice(0, 1)
+          .map((item) => item.track)
+      : tracks;
+
+    for (const track of chosen) {
       for (const text of pick(kidsOf(track), "text")) {
         const key = attrsOf(text)["@_for"];
         if (!key) continue;

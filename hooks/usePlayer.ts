@@ -188,6 +188,12 @@ export const usePlayer = ({
     }
   }, [playState]);
 
+  useEffect(() => {
+    isSeekingRef.current = false;
+    setCurrentTime(0);
+    setDuration(0);
+  }, [currentSong?.id]);
+
   const playNext = useCallback(() => {
     if (queue.length === 0) return;
 

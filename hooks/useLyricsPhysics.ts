@@ -87,6 +87,10 @@ const getLineEnd = (line: LyricLine) => {
     return line.endTime;
   }
 
+  if (line._endTime && line._endTime > line.time) {
+    return line._endTime;
+  }
+
   if (line.words?.length) {
     const word = line.words[line.words.length - 1];
     if (word.endTime > line.time) {
@@ -178,6 +182,19 @@ export const getAnchors = (lyrics: LyricLine[]) => {
       return index;
     }
 
+    if (line.key) {
+      const match = lyrics.findIndex((item, idx) => {
+        if (idx === index) return false;
+        if (item.isMetadata || item.isBackground || item.isInterlude) {
+          return false;
+        }
+        return item.key === line.key;
+      });
+      if (match >= 0) {
+        return match;
+      }
+    }
+
     const anchor = last >= 0 ? last : index;
     for (let i = index - 1; i >= 0; i--) {
       const prev = lyrics[i];
@@ -239,7 +256,7 @@ export const getScrollGroups = (
         if (lyrics[index].isInterlude) {
           break;
         }
-        if (lyrics[index].time > limit + MERGE_EPS) {
+        if (lyrics[index].time >= limit - MERGE_EPS) {
           break;
         }
 

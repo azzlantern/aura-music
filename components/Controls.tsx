@@ -27,6 +27,7 @@ interface ControlsProps {
   onPlayPause: () => void;
   currentTime: number;
   duration: number;
+  trackId: string;
   onSeek: (time: number, playImmediately?: boolean, defer?: boolean) => void;
   title: string;
   artist: string;
@@ -49,6 +50,7 @@ interface ControlsProps {
   showSettingsPopup: boolean;
   setShowSettingsPopup: (show: boolean) => void;
   isBuffering: boolean;
+  playlistPanel?: React.ReactNode;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -56,6 +58,7 @@ const Controls: React.FC<ControlsProps> = ({
   onPlayPause,
   currentTime,
   duration,
+  trackId,
   onSeek,
   title,
   artist,
@@ -78,6 +81,7 @@ const Controls: React.FC<ControlsProps> = ({
   showSettingsPopup,
   setShowSettingsPopup,
   isBuffering,
+  playlistPanel,
 }) => {
   const volumeContainerRef = useRef<HTMLDivElement>(null);
   const settingsContainerRef = useRef<HTMLDivElement>(null);
@@ -103,6 +107,7 @@ const Controls: React.FC<ControlsProps> = ({
   // Optimistic seek state
   const [isWaitingForSeek, setIsWaitingForSeek] = useState(false);
   const seekTargetRef = useRef(0);
+  const seekTimerRef = useRef<number | null>(null);
 
   // Interpolated time for smooth progress bar
   const [interpolatedTime, setInterpolatedTime] = useState(currentTime);
@@ -110,6 +115,53 @@ const Controls: React.FC<ControlsProps> = ({
 
   // Buffered time range from audio element
   const [bufferedEnd, setBufferedEnd] = useState(0);
+
+  const clearSeekTimer = () => {
+    if (seekTimerRef.current === null) return;
+    window.clearTimeout(seekTimerRef.current);
+    seekTimerRef.current = null;
+  };
+
+  const startSeek = () => {
+    clearSeekTimer();
+    setIsWaitingForSeek(false);
+    setSeekTime(interpolatedTime);
+    setIsSeeking(true);
+  };
+
+  const dragSeek = (time: number) => {
+    setSeekTime(time);
+    onSeek(time, false, true);
+  };
+
+  const doneSeek = (time: number) => {
+    clearSeekTimer();
+    onSeek(time, false, false);
+    setIsSeeking(false);
+    setSeekTime(time);
+    setInterpolatedTime(time);
+    seekTargetRef.current = time;
+    setIsWaitingForSeek(true);
+    seekTimerRef.current = window.setTimeout(() => {
+      setIsWaitingForSeek(false);
+      seekTimerRef.current = null;
+    }, 1000);
+  };
+
+  useEffect(() => {
+    clearSeekTimer();
+    setIsSeeking(false);
+    setSeekTime(0);
+    setIsWaitingForSeek(false);
+    seekTargetRef.current = 0;
+    setInterpolatedTime(0);
+    progressLastTimeRef.current = Date.now();
+    setBufferedEnd(0);
+  }, [trackId]);
+
+  useEffect(() => {
+    return () => clearSeekTimer();
+  }, []);
 
   useEffect(() => {
     if (isSeeking) return;
@@ -217,35 +269,35 @@ const Controls: React.FC<ControlsProps> = ({
   const displayTime = isSeeking ? seekTime : interpolatedTime;
 
   const [coverSpring, coverApi] = useSpring(() => ({
-    scale: isPlaying ? 1.04 : 0.94,
+    scale: 1,
     boxShadow: isPlaying
-      ? "0 12px 22px rgba(0,0,0,0.38)"
-      : "0 6px 14px rgba(0,0,0,0.28)",
-    config: { tension: 300, friction: 28 },
+      ? "0 12px 24px rgba(0,0,0,0.32)"
+      : "0 6px 14px rgba(0,0,0,0.18)",
+    config: { tension: 300, friction: 30 },
   }));
 
   useEffect(() => {
     coverApi.start({
-      scale: isPlaying ? 1.04 : 0.94,
+      scale: 1,
       boxShadow: isPlaying
-        ? "0 12px 22px rgba(0,0,0,0.38)"
-        : "0 6px 14px rgba(0,0,0,0.28)",
-      config: { tension: 300, friction: 28 },
+        ? "0 12px 24px rgba(0,0,0,0.32)"
+        : "0 6px 14px rgba(0,0,0,0.18)",
+      config: { tension: 300, friction: 30 },
     });
   }, [isPlaying, coverApi]);
 
   useEffect(() => {
     if (!coverUrl) return;
     coverApi.start({
-      scale: 0.96,
+      scale: 0.95,
       config: { tension: 320, friction: 24 },
     });
     const timeout = window.setTimeout(() => {
       coverApi.start({
-        scale: isPlaying ? 1.04 : 0.94,
+        scale: 1,
         boxShadow: isPlaying
-          ? "0 12px 22px rgba(0,0,0,0.38)"
-          : "0 6px 14px rgba(0,0,0,0.28)",
+          ? "0 12px 24px rgba(0,0,0,0.32)"
+          : "0 6px 14px rgba(0,0,0,0.18)",
         config: { tension: 260, friction: 32 },
       });
     }, 180);
@@ -352,24 +404,21 @@ const Controls: React.FC<ControlsProps> = ({
     : 0;
 
   return (
-    <div className="w-full flex flex-col items-center justify-center gap-2 text-white select-none">
+    <div className="w-full max-w-[480px] flex flex-col items-center justify-center text-white select-none mx-auto p-4 sm:p-6 font-sans">
       {/* Cover Section */}
       <animated.div
         style={{
           boxShadow: coverSpring.boxShadow,
-          transform: to(
-            [coverSpring.scale, controlsScaleSpring.scale],
-            (coverScale, controlScale) => `scale(${coverScale * controlScale})`
-          ),
+          transform: coverSpring.scale.to((s) => `scale(${s})`),
         }}
-        className="relative aspect-square w-[clamp(16rem,30vw,28rem)] rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 shadow-[0_8px_20px_rgba(0,0,0,0.24)] overflow-hidden mb-6"
+        className="relative aspect-square w-full rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden mb-8"
       >
         {coverUrl ? (
           <SmartImage
             src={coverUrl}
             alt="Album Art"
             containerClassName="absolute inset-0 overflow-hidden"
-            imgClassName="absolute inset-0 block w-full h-full object-cover scale-[1.02]"
+            imgClassName="absolute inset-0 block w-full h-full object-cover"
             loading="eager"
           />
         ) : (
@@ -378,49 +427,67 @@ const Controls: React.FC<ControlsProps> = ({
             <p className="text-sm">No Music Loaded</p>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
       </animated.div>
+
       {/* Song Info */}
-      <div className="text-center mb-1 px-4 select-text cursor-text">
-        <h2 className="text-2xl font-bold tracking-tight drop-shadow-md line-clamp-1">
-          {title}
-        </h2>
-        <p className="text-white/60 text-lg font-medium line-clamp-1">
-          {artist}
-        </p>
+      <div className="w-full flex items-center justify-between mb-8 px-1">
+        <div className="flex flex-col items-start overflow-hidden pr-4 max-w-[85%] select-text">
+          <h2 className="text-[1.4rem] leading-tight font-bold tracking-tight drop-shadow-md truncate text-left w-full text-white select-text">
+            {title}
+          </h2>
+          <p className="text-white/60 text-[1.1rem] leading-tight font-medium truncate text-left w-full mt-0.5 select-text">
+            {artist}
+          </p>
+        </div>
+        <div className="relative" ref={settingsContainerRef}>
+          <button
+            onClick={() => setShowSettingsPopup(!showSettingsPopup)}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all outline-none flex-shrink-0"
+            title="Settings/More"
+          >
+            <div className="flex gap-[3px]">
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+            </div>
+          </button>
+
+          {/* Settings Popup */}
+          {settingsTransitions((style, item) =>
+            item ? (
+              <SettingsPopup
+                style={style}
+                speed={speed}
+                preservesPitch={preservesPitch}
+                onTogglePreservesPitch={onTogglePreservesPitch}
+                onSpeedChange={onSpeedChange}
+              />
+            ) : null
+          )}
+        </div>
       </div>
 
-      {/* Spectrum Visualizer */}
-      <div className="w-full flex justify-center h-8 mb-2">
+      {/* Visualizer */}
+      <div className="w-full flex justify-center h-10 mb-4 opacity-40 px-1">
         <Visualizer audioRef={audioRef} isPlaying={isPlaying} />
       </div>
 
       {/* Progress Bar */}
-      <div className="w-full max-w-xl flex items-center gap-3 text-xs font-medium text-white/50 group/bar relative">
-        <span className="w-10 text-right font-mono tracking-widest">
-          {formatTime(displayTime)}
-        </span>
-
-        <div className="relative flex-1 h-8 flex items-center cursor-pointer group">
+      <div className="w-full flex flex-col group/bar relative mb-8 px-1">
+        <div className="relative w-full h-3 flex items-center cursor-pointer group">
           {/* Background Track */}
-          <div className="absolute inset-x-0 h-[3px] bg-white/20 rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"></div>
+          <div className="absolute inset-x-0 h-1.5 bg-white/20 rounded-full group-hover:h-3 transition-[height] duration-200"></div>
 
           {/* Buffer Progress */}
           <div
-            className="absolute left-0 h-[3px] rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"
-            style={{
-              width: bufferedWidthPercent + "%",
-              backgroundColor: "rgba(255,255,255,0.35)",
-            }}
+            className="absolute left-0 h-1.5 rounded-full group-hover:h-3 transition-[height] duration-200 bg-white/30"
+            style={{ width: bufferedWidthPercent + "%" }}
           ></div>
 
           {/* Active Progress */}
           <div
-            className="absolute left-0 h-[3px] rounded-full group-hover:h-[6px] transition-[height] duration-200 ease-out"
-            style={{
-              width: `${(displayTime / (duration || 1)) * 100}%`,
-              backgroundColor: "rgba(255,255,255,0.9)",
-            }}
+            className="absolute left-0 h-1.5 rounded-full group-hover:h-3 transition-[height] duration-200 bg-white"
+            style={{ width: `${(displayTime / (duration || 1)) * 100}%` }}
           ></div>
 
           {/* Input Range */}
@@ -429,160 +496,108 @@ const Controls: React.FC<ControlsProps> = ({
             min={0}
             max={duration || 0}
             value={displayTime}
-            onMouseDown={() => setIsSeeking(true)}
-            onTouchStart={() => setIsSeeking(true)}
-            onChange={(e) => {
+            onPointerDown={startSeek}
+            onInput={(e) => {
               const time = parseFloat(e.target.value);
-              setSeekTime(time);
-              onSeek(time, false, true); // Deferred seek
+              dragSeek(time);
             }}
-            onMouseUp={(e) => {
+            onChange={(e) => {
               const time = parseFloat((e.target as HTMLInputElement).value);
-              onSeek(time, false, false); // Actual seek
-              setIsSeeking(false);
-
-              // Optimistic update
-              setInterpolatedTime(time);
-              seekTargetRef.current = time;
-              setIsWaitingForSeek(true);
-
-              // Safety timeout: if seek doesn't happen within 1s, give up waiting
-              setTimeout(() => setIsWaitingForSeek(false), 1000);
+              dragSeek(time);
             }}
-            onTouchEnd={(e) => {
+            onPointerUp={(e) => {
               const time = parseFloat((e.target as HTMLInputElement).value);
-              onSeek(time, false, false); // Actual seek
-              setIsSeeking(false);
-
-              // Optimistic update
-              setInterpolatedTime(time);
-              seekTargetRef.current = time;
-              setIsWaitingForSeek(true);
-
-              // Safety timeout
-              setTimeout(() => setIsWaitingForSeek(false), 1000);
+              doneSeek(time);
             }}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+            onPointerCancel={(e) => {
+              const time = parseFloat((e.target as HTMLInputElement).value);
+              doneSeek(time);
+            }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 touch-none"
           />
         </div>
 
-        <span className="w-10 font-mono tracking-widest">
-          {formatTime(duration)}
-        </span>
+        <div className="flex justify-between w-full mt-2 text-[10px] font-semibold text-white/50 tracking-widest uppercase">
+          <span>{formatTime(displayTime)}</span>
+          <span>{duration > 0 ? `-${formatTime(duration - displayTime)}` : "0:00"}</span>
+        </div>
       </div>
 
-      {/* Controls Row - Flattened for Equal Spacing */}
-      {/* Layout: [Mode] [Vol] [Prev] [Play] [Next] [Settings] [List] */}
-      <div className="w-full max-w-[380px] mt-6 px-2">
-        <div className="flex items-center justify-between w-full">
-          {/* 1. Play Mode */}
-          <button
-            onClick={onToggleMode}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            title="Playback Mode"
-          >
-            {getModeIcon()}
-          </button>
+      {/* Main Controls Row */}
+      <div className="w-full flex items-center justify-between mb-10 px-0">
+        <button
+          onClick={onToggleMode}
+          className="text-white/70 hover:bg-white/10 hover:text-white rounded-full p-3 transition-colors active:bg-white/20 outline-none"
+          title="Playback Mode"
+        >
+          {getModeIcon()}
+        </button>
 
-          {/* 2. Volume */}
-          <div className="relative" ref={volumeContainerRef}>
-            <button
-              onClick={() => setShowVolumePopup(!showVolumePopup)}
-              className={`p-2 rounded-full hover:bg-white/10 transition-colors ${showVolumePopup ? "text-white" : "text-white/60 hover:text-white"
+        <button
+          onClick={onPrev}
+          className="text-white hover:bg-white/10 rounded-full p-3 transition-colors active:bg-white/20 outline-none flex items-center justify-center transform active:scale-95"
+          aria-label="Previous"
+        >
+          <PrevIcon className="w-10 h-10 fill-current" />
+        </button>
+
+        <button
+          onClick={onPlayPause}
+          className="relative flex items-center justify-center p-5 hover:bg-white/10 rounded-full active:bg-white/20 transition-all outline-none transform active:scale-95 text-white"
+        >
+          <div className="relative w-12 h-12">
+            <PauseIcon
+              className={`absolute inset-0 w-full h-full fill-current transition-all duration-300 ${isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 -rotate-90"
                 }`}
-              title="Volume"
-            >
-              {getVolumeButtonIcon()}
-            </button>
-
-            {/* Volume Popup */}
-            {volumeTransitions((style, item) =>
-              item ? (
-                <VolumePopup
-                  style={style}
-                  volume={volume}
-                  onVolumeChange={onVolumeChange}
-                  getVolumePopupIcon={getVolumePopupIcon}
-                />
-              ) : null
-            )}
-          </div>
-
-          {/* 3. Previous */}
-          <button
-            onClick={onPrev}
-            className="text-white hover:text-white/70 transition-colors active:scale-90 duration-200"
-            aria-label="Previous"
-          >
-            <PrevIcon className="w-9 h-9" />
-          </button>
-
-          {/* 4. Play/Pause (Center) */}
-          <button
-            onClick={onPlayPause}
-            className="w-14 h-14 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 active:scale-95 transition-transform duration-200 shadow-lg shadow-white/10"
-          >
-            <div className="relative w-6 h-6">
-              {/* Pause Icon */}
-              <PauseIcon
-                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isPlaying
-                  ? "opacity-100 scale-100 rotate-0"
-                  : "opacity-0 scale-50 -rotate-90"
-                  }`}
-              />
-
-              <PlayIcon
-                className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${!isPlaying
-                  ? "opacity-100 scale-100 rotate-0"
-                  : "opacity-0 scale-50 rotate-90"
-                  }`}
-              />
-            </div>
-          </button>
-
-          {/* 5. Next */}
-          <button
-            onClick={onNext}
-            className="text-white hover:text-white/70 transition-colors active:scale-90 duration-200"
-            aria-label="Next"
-          >
-            <NextIcon className="w-9 h-9" />
-          </button>
-
-          {/* 6. Settings (Replaces Like) */}
-          <div className="relative" ref={settingsContainerRef}>
-            <button
-              onClick={() => setShowSettingsPopup(!showSettingsPopup)}
-              className={`p-2 rounded-full hover:bg-white/10 transition-colors ${showSettingsPopup ? "text-white" : "text-white/60 hover:text-white"
+            />
+            <PlayIcon
+              className={`absolute inset-0 w-full h-full fill-current transition-all duration-300 ${!isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 rotate-90"
                 }`}
-              title="Settings"
-            >
-              <SettingsIcon className="w-5 h-5" />
-            </button>
-
-            {/* Settings Popup */}
-            {settingsTransitions((style, item) =>
-              item ? (
-                <SettingsPopup
-                  style={style}
-                  speed={speed}
-                  preservesPitch={preservesPitch}
-                  onTogglePreservesPitch={onTogglePreservesPitch}
-                  onSpeedChange={onSpeedChange}
-                />
-              ) : null
-            )}
+            />
           </div>
+        </button>
 
-          {/* 7. Playlist/Queue */}
+        <button
+          onClick={onNext}
+          className="text-white hover:bg-white/10 rounded-full p-3 transition-colors active:bg-white/20 outline-none flex items-center justify-center transform active:scale-95"
+          aria-label="Next"
+        >
+          <NextIcon className="w-10 h-10 fill-current" />
+        </button>
+
+        <div className="relative flex items-center justify-center">
           <button
             onClick={onTogglePlaylist}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/60 hover:text-white"
+            className="text-white/70 hover:bg-white/10 hover:text-white rounded-full p-3 transition-colors active:bg-white/20 outline-none"
             title="Queue"
           >
-            <QueueIcon className="w-5 h-5" />
+            <QueueIcon className="w-6 h-6 fill-current" />
           </button>
+          {playlistPanel}
         </div>
+      </div>
+
+      {/* Inline Volume Slider */}
+      <div className="w-full flex items-center gap-3 group/vol mb-4 px-2">
+        <VolumeLowIcon className="w-4 h-4 text-white/60 fill-current" />
+        <div className="relative flex-1 h-3 flex items-center cursor-pointer">
+          <div className="absolute inset-x-0 h-[5px] bg-white/20 rounded-full group-hover/vol:h-[10px] transition-[height] duration-200"></div>
+          <div
+            className="absolute left-0 h-[5px] bg-white rounded-full group-hover/vol:h-[10px] transition-[height] duration-200 pointer-events-none"
+            style={{ width: `${volume * 100}%` }}
+          ></div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onInput={(e) => onVolumeChange(parseFloat((e.target as HTMLInputElement).value))}
+            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 touch-none"
+          />
+        </div>
+        <VolumeHighIcon className="w-4 h-4 text-white/60 fill-current" />
       </div>
     </div>
   );

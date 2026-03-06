@@ -149,31 +149,135 @@ const TTML_META_LABELS: Record<string, string> = {
   musicName: "歌曲名",
   artists: "艺术家",
   album: "专辑",
-  ncmMusicId: "网易云 ID",
-  qqMusicId: "QQ 音乐 ID",
-  spotifyId: "Spotify ID",
-  appleMusicId: "Apple Music ID",
-  ttmlAuthorGithub: "TTML 作者 ID",
-  ttmlAuthorGithubLogin: "TTML 作者",
+  ttmlAuthorGithubLogin: "TTML 歌词贡献者",
 };
 
-const extractTtmlMetadata = (content?: string): string[] => {
+const TTML_META_KEYS = Object.keys(TTML_META_LABELS);
+const HAN_REGEX = /\p{Script=Han}/u;
+const KANA_REGEX = /\p{Script=Hiragana}|\p{Script=Katakana}/u;
+const HANGUL_REGEX = /\p{Script=Hangul}/u;
+const LATIN_REGEX = /[A-Za-z]/;
+
+const BAD_META_HINTS = [
+  "instrumental",
+  "伴奏",
+  "和声伴奏",
+  "和聲伴奏",
+  "harmonic accompaniment",
+  "オフボーカル",
+  "화음 반주",
+  "single",
+  "单曲",
+  "單曲",
+];
+
+const chineseRankOf = (lang?: string): number | null => {
+  const value = lang?.trim().toLowerCase();
+  if (!value) return null;
+  if (!/^zh(?:-|$)/.test(value)) return null;
+  if (/^zh(?:-hans|-cn|-sg)/.test(value)) return 0;
+  if (value === "zh") return 1;
+  if (/^zh(?:-hant|-tw|-hk|-mo)/.test(value)) return 2;
+  return 1;
+};
+
+const hasHan = (value: string): boolean => {
+  return HAN_REGEX.test(value);
+};
+
+const looksChinese = (value: string): boolean => {
+  if (!hasHan(value)) return false;
+  if (KANA_REGEX.test(value)) return false;
+  if (HANGUL_REGEX.test(value)) return false;
+  return true;
+};
+
+const scoreMeta = (value: string): number => {
+  const text = value.trim();
+  if (!text) return Number.POSITIVE_INFINITY;
+
+  let score = text.length;
+
+  if (!looksChinese(text)) score += 100;
+  if (LATIN_REGEX.test(text)) score += 20;
+
+  const lower = text.toLowerCase();
+  BAD_META_HINTS.forEach((hint) => {
+    if (lower.includes(hint)) {
+      score += 30;
+    }
+  });
+
+  return score;
+};
+
+const pickMeta = (key: string, list: string[]): string | undefined => {
+  const uniq = list.filter((value, idx, arr) => arr.indexOf(value) === idx);
+  if (uniq.length === 0) return undefined;
+
+  if (key === "ttmlAuthorGithubLogin") {
+    return uniq[0];
+  }
+
+  const best = uniq
+    .map((value) => ({ value, score: scoreMeta(value) }))
+    .sort((a, b) => a.score - b.score)[0];
+
+  if (!best || !Number.isFinite(best.score) || best.score >= 100) {
+    return undefined;
+  }
+
+  return best.value;
+};
+
+const parseXmlAttrs = (value: string): Record<string, string> => {
+  const attrs: Record<string, string> = {};
+  const regex = /([:\w-]+)="([^"]*)"/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(value)) !== null) {
+    attrs[match[1]] = match[2]
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+  }
+
+  return attrs;
+};
+
+export const extractTtmlMetadata = (content?: string): string[] => {
   if (!content) return [];
 
-  const meta: string[] = [];
-  const regex = /<amll:meta[^>]*\bkey="([^"]+)"[^>]*\bvalue="([^"]*)"[^>]*\/>/g;
+  const groups = new Map<string, string[]>();
+  const regex = /<amll:meta\b([^>]*)\/>/g;
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(content)) !== null) {
-    const key = match[1];
-    const value = match[2]?.trim();
-    if (!value) continue;
-    const label = TTML_META_LABELS[key] || key;
-    meta.push(`${label}: ${value}`);
+    const attrs = parseXmlAttrs(match[1]);
+    const key = attrs.key?.trim();
+    const value = attrs.value?.trim();
+    if (!key || !value || !TTML_META_KEYS.includes(key)) continue;
+
+    const list = groups.get(key) ?? [];
+    list.push(value);
+    groups.set(key, list);
   }
 
+  const meta: string[] = [];
+
+  TTML_META_KEYS.forEach((key) => {
+    const list = groups.get(key);
+    if (!list?.length) return;
+
+    const value = pickMeta(key, list);
+    if (!value) return;
+    meta.push(`${TTML_META_LABELS[key]}: ${value}`);
+  });
+
   if (meta.length > 0) {
-    meta.unshift("TTML 歌词来源: AMLL TTML Database");
+    meta.push("TTML 歌词来源: AMLL TTML Database");
   }
 
   return meta;
@@ -274,9 +378,7 @@ export const fetchNeteaseSong = async (
 ): Promise<NeteaseTrackInfo | null> => {
   try {
     const url = `${NETEASECLOUD_API_BASE}/song/detail?ids=${songId}`;
-    const data = (await fetchViaProxy(
-      url,
-    )) as NeteaseSongDetailResponse;
+    const data = (await fetchViaProxy(url)) as NeteaseSongDetailResponse;
     const track = data.songs?.[0];
     if (data.code === 200 && track) {
       return mapNeteaseSongToTrack(track);
@@ -336,8 +438,12 @@ export const fetchLyricsById = async (
     const rawLrc: string | undefined = lyricData?.lrc?.lyric;
     const tLrcRaw: string | undefined = lyricData?.tlyric?.lyric;
 
-    const lrcMeta = rawLrc ? extractMetadataLines(rawLrc) : { clean: undefined, metadata: [] };
-    const yrcMeta = rawYrc ? extractMetadataLines(rawYrc) : { clean: undefined, metadata: [] };
+    const lrcMeta = rawLrc
+      ? extractMetadataLines(rawLrc)
+      : { clean: undefined, metadata: [] };
+    const yrcMeta = rawYrc
+      ? extractMetadataLines(rawYrc)
+      : { clean: undefined, metadata: [] };
 
     let cleanTranslation: string | undefined;
     let translationMetadata: string[] = [];
@@ -349,7 +455,12 @@ export const fetchLyricsById = async (
 
     const ttmlMetadata = extractTtmlMetadata(ttmlContent ?? undefined);
 
-    const metadataSet = new Set<string>([...lrcMeta.metadata, ...yrcMeta.metadata, ...translationMetadata, ...ttmlMetadata]);
+    const metadataSet = new Set<string>([
+      ...lrcMeta.metadata,
+      ...yrcMeta.metadata,
+      ...translationMetadata,
+      ...ttmlMetadata,
+    ]);
 
     if (lyricData?.transUser?.nickname) {
       metadataSet.add(`翻译贡献者: ${lyricData.transUser.nickname}`);
@@ -365,7 +476,8 @@ export const fetchLyricsById = async (
       return null;
     }
 
-    const yrcForEnrichment = yrcMeta.clean && lrcMeta.clean ? yrcMeta.clean : undefined;
+    const yrcForEnrichment =
+      yrcMeta.clean && lrcMeta.clean ? yrcMeta.clean : undefined;
 
     return {
       lrc: baseLyrics,

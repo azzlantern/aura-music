@@ -23,23 +23,19 @@ It applies to the entire tree under the repo root.
 
 - Use a recent Node.js (>= 18) and Bun installed globally.
 - Install dependencies with one of:
-  - `npm install`
   - `bun install`
 
 ### Dev server
 
 - Start the React dev server (Vite):
-  - `npm run dev`
-  - or `bun run dev`
+  - `bun run dev`
 
 ### Build & preview
 
 - Production build:
-  - `npm run build`
-  - or `bun run build`
+  - `bun run build`
 - Preview a production build locally:
-  - `npm run preview`
-  - or `bun run preview`
+  - `bun run preview`
 
 ### Tests (Bun)
 

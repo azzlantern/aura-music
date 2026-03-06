@@ -170,7 +170,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     return { linePositions: positions, lineHeights: heights };
   }, [lyricLines]);
 
-  const marginY = 18; // Define marginY here
+  const marginY = 18;
 
   // Physics Hook
   const { handlers, linesState, updatePhysics } = useLyricsPhysics(
@@ -454,11 +454,11 @@ const LyricsView: React.FC<LyricsViewProps> = ({
 
       if (!isActive) {
         const normDist = Math.min(dist, 600) / 600;
-        const minOpacity = isMobile ? 0.4 : 0.25;
-        targetOpacity = minOpacity + (1 - minOpacity) * (1 - Math.pow(normDist, 0.5));
+        const floor = isMobile ? 0.4 : isBg ? 0.34 : 0.18;
+        targetOpacity = floor + (1 - floor) * (1 - Math.pow(normDist, 0.62));
 
         if (!isMobile && !isBg) {
-          targetBlur = normDist * 3;
+          targetBlur = 0.65 + Math.pow(normDist, 0.82) * 6.1;
         }
       }
 
@@ -599,7 +599,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
 
   if (!lyrics.length) {
     return (
-      <div className="h-[85vh] lg:h-[65vh] flex flex-col items-center justify-center text-white/40 select-none">
+      <div className="h-[88vh] lg:h-[80vh] flex flex-col items-center justify-center text-white/40 select-none">
         {matchStatus === "matching" ? (
           <div className="animate-pulse">Syncing Lyrics...</div>
         ) : (
@@ -636,7 +636,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative h-[85vh] lg:h-[65vh] w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
+      className="relative h-[85vh] lg:h-[75vh] w-full overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
       // onWheel removed here
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
