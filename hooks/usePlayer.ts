@@ -60,6 +60,7 @@ export const usePlayer = ({
 }: UsePlayerParams) => {
   const savedRef = useRef(loadPlaybackSnapshot());
   const restoredRef = useRef(false);
+  const songRef = useRef<string | null>(savedRef.current.songId);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [playState, setPlayState] = useState<PlayState>(PlayState.PAUSED);
   const [currentTime, setCurrentTime] = useState(0);
@@ -77,6 +78,10 @@ export const usePlayer = ({
 
   const currentSong = queue[currentIndex] ?? null;
   const accentColor = currentSong?.colors?.[0] || "#a855f7";
+
+  useEffect(() => {
+    songRef.current = queue[currentIndex]?.id ?? null;
+  }, [currentIndex]);
 
   const reorderForShuffle = useCallback(() => {
     if (originalQueue.length === 0) return;
@@ -526,6 +531,17 @@ export const usePlayer = ({
       setDuration(0);
       setMatchStatus("idle");
       return;
+    }
+
+    const id = songRef.current;
+    if (id && queue[currentIndex]?.id !== id) {
+      const idx = queue.findIndex((song) => song.id === id);
+      if (idx !== -1) {
+        setCurrentIndex(idx);
+        return;
+      }
+
+      songRef.current = queue[currentIndex]?.id ?? null;
     }
 
     if (currentIndex >= queue.length || !queue[currentIndex]) {

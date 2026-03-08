@@ -161,6 +161,29 @@ export const usePlaylist = () => {
     appendSongs(songs);
   }, [appendSongs]);
 
+  const reorder = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+
+    const order = new Map(ids.map((id, idx) => [id, idx]));
+    const sort = (list: Song[]) => {
+      if (
+        list.length !== ids.length ||
+        order.size !== ids.length ||
+        list.some((song) => !order.has(song.id))
+      ) {
+        return list;
+      }
+
+      return [...list].sort(
+        (a, b) =>
+          (order.get(a.id) ?? ids.length) - (order.get(b.id) ?? ids.length),
+      );
+    };
+
+    setQueue(sort);
+    setOriginalQueue(sort);
+  }, []);
+
   const removeSongs = useCallback((ids: string[]) => {
     if (ids.length === 0) return;
     const locals = new Set<string>();
@@ -411,6 +434,7 @@ export const usePlaylist = () => {
     isReady,
     updateSongInQueue,
     addSongs,
+    reorder,
     removeSongs,
     addLocalFiles,
     importFromUrl,

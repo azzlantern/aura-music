@@ -275,6 +275,7 @@ const App: React.FC = () => {
               currentSongId={currentSong?.id}
               onPlay={playIndex}
               onImport={handleImportUrl}
+              onReorder={playlist.reorder}
               onRemove={playlist.removeSongs}
               accentColor={accentColor}
             />

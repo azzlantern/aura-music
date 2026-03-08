@@ -1,11 +1,17 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useTransition, animated } from '@react-spring/web';
-import { Song } from '../types';
-import { CheckIcon, PlusIcon, QueueIcon, TrashIcon, SelectAllIcon } from './Icons';
-import { useKeyboardScope } from '../hooks/useKeyboardScope';
-import ImportMusicDialog from './ImportMusicDialog';
-import SmartImage from './SmartImage';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTransition, animated } from "@react-spring/web";
+import { Song } from "../types";
+import {
+  CheckIcon,
+  PlusIcon,
+  QueueIcon,
+  TrashIcon,
+  SelectAllIcon,
+} from "./Icons";
+import { useKeyboardScope } from "../hooks/useKeyboardScope";
+import ImportMusicDialog from "./ImportMusicDialog";
+import SmartImage from "./SmartImage";
 
 const IOS_SCROLLBAR_STYLES = `
   .playlist-scrollbar {
@@ -40,9 +46,53 @@ interface PlaylistPanelProps {
     currentSongId?: string;
     onPlay: (index: number) => void;
     onImport: (url: string) => Promise<boolean>;
+    onReorder: (ids: string[]) => void;
     onRemove: (ids: string[]) => void;
     accentColor: string;
 }
+
+interface HoldState {
+    id: string;
+    song: Song;
+    index: number;
+    x: number;
+    y: number;
+    ptr: number;
+    row: HTMLDivElement;
+    timer: number;
+}
+
+interface DragState {
+    id: string;
+    song: Song;
+    index: number;
+    to: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    lift: number;
+    ptr: number;
+}
+
+interface RowState {
+    song: Song;
+    index: number;
+    view: number;
+}
+
+const HOLD_MS = 220;
+const HOLD_SLOP = 10;
+
+const move = (list: string[], from: number, to: number) => {
+    const next = [...list];
+    const [id] = next.splice(from, 1);
+    if (!id) {
+        return list;
+    }
+    next.splice(to, 0, id);
+    return next;
+};
 
 const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     isOpen,
@@ -51,17 +101,21 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     currentSongId,
     onPlay,
     onImport,
+    onReorder,
     onRemove,
     accentColor
 }) => {
     const [isAdding, setIsAdding] = useState(false);
-    const [visible, setVisible] = useState(false);
-
     const [isEditing, setIsEditing] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [hold, setHold] = useState<HoldState | null>(null);
+    const [drag, setDrag] = useState<DragState | null>(null);
 
     const panelRef = useRef<HTMLDivElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const holdRef = useRef<HoldState | null>(null);
+    const dragRef = useRef<DragState | null>(null);
+    const skipRef = useRef(false);
     const [scrollTop, setScrollTop] = useState(0);
 
     // Virtualization Constants
@@ -161,12 +215,111 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         }
     };
 
+    const cancelHold = useCallback(() => {
+        const state = holdRef.current;
+        if (state) {
+            window.clearTimeout(state.timer);
+        }
+        holdRef.current = null;
+        setHold(null);
+    }, []);
+
+    const clearDrag = useCallback(() => {
+        dragRef.current = null;
+        setDrag(null);
+        document.body.style.userSelect = "";
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen || isEditing || queue.length < 2) {
+            cancelHold();
+            clearDrag();
+        }
+    }, [cancelHold, clearDrag, isEditing, isOpen, queue.length]);
+
+    useEffect(() => {
+        return () => {
+            cancelHold();
+            clearDrag();
+        };
+    }, [cancelHold, clearDrag]);
+
+    const getIndex = useCallback((y: number, lift: number, h: number) => {
+        const list = listRef.current;
+        if (!list || queue.length === 0) {
+            return 0;
+        }
+
+        const rect = list.getBoundingClientRect();
+        const raw = y - rect.top + list.scrollTop - lift + (h / 2);
+        return Math.max(
+            0,
+            Math.min(queue.length - 1, Math.floor(raw / ITEM_HEIGHT)),
+        );
+    }, [queue.length]);
+
+    const handlePress = (
+        e: React.PointerEvent<HTMLDivElement>,
+        song: Song,
+        index: number,
+    ) => {
+        if (isEditing || queue.length < 2 || !listRef.current || dragRef.current) {
+            return;
+        }
+        if (e.pointerType === "mouse" && e.button !== 0) {
+            return;
+        }
+
+        cancelHold();
+        const row = e.currentTarget;
+        const next: HoldState = {
+            id: song.id,
+            song,
+            index,
+            x: e.clientX,
+            y: e.clientY,
+            ptr: e.pointerId,
+            row,
+            timer: 0,
+        };
+
+        next.timer = window.setTimeout(() => {
+            const state = holdRef.current;
+            if (!state || state.ptr !== next.ptr || state.id !== next.id) {
+                return;
+            }
+
+            const rect = state.row.getBoundingClientRect();
+            const item: DragState = {
+                id: state.id,
+                song: state.song,
+                index: state.index,
+                to: state.index,
+                x: rect.left,
+                y: state.y,
+                w: rect.width,
+                h: rect.height,
+                lift: state.y - rect.top,
+                ptr: state.ptr,
+            };
+
+            skipRef.current = true;
+            cancelHold();
+            dragRef.current = item;
+            document.body.style.userSelect = "none";
+            setDrag(item);
+        }, HOLD_MS);
+
+        holdRef.current = next;
+        setHold(next);
+    };
+
     // Virtual List Logic
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         setScrollTop(e.currentTarget.scrollTop);
     };
 
-    const { virtualItems, totalHeight, startOffset } = useMemo(() => {
+    const { virtualItems, totalHeight } = useMemo(() => {
         const totalHeight = queue.length * ITEM_HEIGHT;
         const containerHeight = 600; // Approx max height
 
@@ -176,24 +329,228 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         startIndex = Math.max(0, startIndex - OVERSCAN);
         endIndex = Math.min(queue.length, endIndex + OVERSCAN);
 
-        const virtualItems = [];
-        for (let i = startIndex; i < endIndex; i++) {
-            virtualItems.push({
-                ...queue[i],
-                index: i
-            });
-        }
+        const virtualItems = queue.reduce<RowState[]>((list, song, index) => {
+            const view = !drag
+                ? index
+                : drag.index === index
+                    ? drag.to
+                    : drag.index < drag.to
+                        ? index > drag.index && index <= drag.to
+                            ? index - 1
+                            : index
+                        : index >= drag.to && index < drag.index
+                            ? index + 1
+                            : index;
+
+            if (view < startIndex || view >= endIndex) {
+                return list;
+            }
+
+            list.push({ song, index, view });
+            return list;
+        }, []);
 
         return {
             virtualItems,
             totalHeight,
-            startOffset: startIndex * ITEM_HEIGHT
         };
-    }, [queue, scrollTop]);
+    }, [drag, queue, scrollTop]);
+
+    useEffect(() => {
+        if (!hold) {
+            return;
+        }
+
+        const handleMove = (e: PointerEvent) => {
+            if (e.pointerId !== hold.ptr) {
+                return;
+            }
+
+            if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP) {
+                cancelHold();
+            }
+        };
+
+        const handleEnd = (e: PointerEvent) => {
+            if (e.pointerId !== hold.ptr) {
+                return;
+            }
+            cancelHold();
+        };
+
+        window.addEventListener("pointermove", handleMove);
+        window.addEventListener("pointerup", handleEnd);
+        window.addEventListener("pointercancel", handleEnd);
+
+        return () => {
+            window.removeEventListener("pointermove", handleMove);
+            window.removeEventListener("pointerup", handleEnd);
+            window.removeEventListener("pointercancel", handleEnd);
+        };
+    }, [cancelHold, hold]);
+
+    useEffect(() => {
+        if (!drag) {
+            return;
+        }
+
+        const handleMove = (e: PointerEvent) => {
+            if (e.pointerId !== drag.ptr) {
+                return;
+            }
+
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+
+            setDrag(prev => {
+                if (!prev || e.pointerId !== prev.ptr) {
+                    return prev;
+                }
+                const next = {
+                    ...prev,
+                    y: e.clientY,
+                    to: getIndex(e.clientY, prev.lift, prev.h),
+                };
+                dragRef.current = next;
+                return next;
+            });
+        };
+
+        const handleEnd = (e: PointerEvent) => {
+            if (e.pointerId !== drag.ptr) {
+                return;
+            }
+
+            const state = dragRef.current;
+            clearDrag();
+            window.setTimeout(() => {
+                skipRef.current = false;
+            }, 0);
+            if (!state) {
+                return;
+            }
+
+            if (state.to === state.index) {
+                return;
+            }
+
+            onReorder(move(queue.map(song => song.id), state.index, state.to));
+        };
+
+        const block = (e: TouchEvent) => {
+            e.preventDefault();
+        };
+
+        window.addEventListener("pointermove", handleMove);
+        window.addEventListener("pointerup", handleEnd);
+        window.addEventListener("pointercancel", handleEnd);
+        window.addEventListener("touchmove", block, { passive: false });
+
+        return () => {
+            window.removeEventListener("pointermove", handleMove);
+            window.removeEventListener("pointerup", handleEnd);
+            window.removeEventListener("pointercancel", handleEnd);
+            window.removeEventListener("touchmove", block);
+        };
+    }, [clearDrag, drag?.id, drag?.ptr, getIndex, onReorder, queue]);
+
+    useEffect(() => {
+        if (!drag) {
+            return;
+        }
+
+        let frame = 0;
+        const tick = () => {
+            const list = listRef.current;
+            const state = dragRef.current;
+            if (!list || !state) {
+                return;
+            }
+
+            const rect = list.getBoundingClientRect();
+            const edge = 64;
+            let delta = 0;
+
+            if (state.y < rect.top + edge) {
+                delta = -Math.ceil(((rect.top + edge) - state.y) / 8);
+            } else if (state.y > rect.bottom - edge) {
+                delta = Math.ceil((state.y - (rect.bottom - edge)) / 8);
+            }
+
+            if (delta !== 0) {
+                const top = Math.max(
+                    0,
+                    Math.min(list.scrollHeight - list.clientHeight, list.scrollTop + delta),
+                );
+
+                if (top !== list.scrollTop) {
+                    list.scrollTop = top;
+                    setScrollTop(top);
+                    setDrag(prev => {
+                        if (!prev) {
+                            return prev;
+                        }
+                        const next = {
+                            ...prev,
+                            to: getIndex(prev.y, prev.lift, prev.h),
+                        };
+                        dragRef.current = next;
+                        return next;
+                    });
+                }
+            }
+
+            frame = window.requestAnimationFrame(tick);
+        };
+
+        frame = window.requestAnimationFrame(tick);
+        return () => window.cancelAnimationFrame(frame);
+    }, [drag?.id, getIndex]);
 
     return (
         <>
             <style>{IOS_SCROLLBAR_STYLES}</style>
+            {drag && (
+                <div
+                    className="pointer-events-none fixed z-[80]"
+                    style={{
+                        top: drag.y - drag.lift,
+                        left: drag.x,
+                        width: drag.w,
+                    }}
+                >
+                    <div className="flex h-[66px] scale-[1.02] items-center gap-3 rounded-2xl border border-white/10 bg-black/45 px-2 shadow-[0_24px_50px_rgba(0,0,0,0.35)] backdrop-blur-[28px]">
+                        <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800 border border-white/5 shadow-sm">
+                            {drag.song.coverUrl ? (
+                                <SmartImage
+                                    src={drag.song.coverUrl}
+                                    alt={drag.song.title}
+                                    containerClassName="w-full h-full"
+                                    imgClassName="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                            <div
+                                className="text-[15px] font-semibold truncate leading-tight"
+                                style={{
+                                    color: drag.song.id === currentSongId
+                                        ? accentColor
+                                        : "rgba(255,255,255,0.92)",
+                                }}
+                            >
+                                {drag.song.title}
+                            </div>
+                            <div className="text-[13px] text-white/50 truncate font-medium">
+                                {drag.song.artist}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {transitions((style, item) => item && (
                 <animated.div
                     ref={panelRef}
@@ -214,7 +571,9 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                     <div className="px-5 pt-5 pb-3 shrink-0 flex items-center justify-between bg-transparent border-b border-white/5">
                         <div className="flex flex-col">
                             <h3 className="text-white text-lg font-bold leading-none tracking-tight">Playing Next</h3>
-                            <span className="text-white/40 text-xs font-medium mt-1">{queue.length} Songs</span>
+                            <span className="text-white/40 text-xs font-medium mt-1">
+                                {queue.length} Songs
+                            </span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -277,27 +636,44 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                             </div>
                         ) : (
                             <div style={{ height: `${totalHeight}px`, position: 'relative' }}>
-                                {virtualItems.map((song) => {
-                                    const index = song.index;
+                                {virtualItems.map((item) => {
+                                    const song = item.song;
+                                    const index = item.index;
+                                    const view = item.view;
                                     const isCurrent = song.id === currentSongId;
                                     const isSelected = selectedIds.has(song.id);
+                                    const isDrag = drag?.id === song.id;
 
                                     return (
                                         <div
-                                            key={`${song.id}-${index}`}
+                                            key={song.id}
+                                            data-song-row={song.id}
+                                            onPointerDown={(e) => handlePress(e, song, index)}
+                                            onContextMenu={(e) => {
+                                                if (!isEditing) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
                                             onClick={() => {
+                                                if (skipRef.current) {
+                                                    return;
+                                                }
                                                 if (isEditing) toggleSelection(song.id);
                                                 else onPlay(index);
                                             }}
                                             className={`
-                                    absolute left-0 right-0 h-[66px]
-                                    group flex items-center gap-3 p-2 mx-2 rounded-2xl cursor-pointer transition-all duration-200
-                                    ${isEditing ? 'hover:bg-white/10' : isCurrent ? 'bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'hover:bg-white/5'}
-                                `}
+                                     absolute left-0 right-0 h-[66px]
+                                     group flex items-center gap-3 p-2 mx-2 rounded-2xl cursor-pointer transition-all duration-200
+                                     ${isEditing ? 'hover:bg-white/10' : isCurrent ? 'bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'hover:bg-white/5'}
+                                     ${isDrag ? 'opacity-0 scale-[0.98]' : ''}
+                                 `}
                                             style={{
-                                                top: `${index * ITEM_HEIGHT}px`,
+                                                top: `${view * ITEM_HEIGHT}px`,
                                                 // Adjust height within the slot if needed, ITEM_HEIGHT includes gap
-                                                height: '66px'
+                                                height: '66px',
+                                                touchAction: isEditing ? 'auto' : 'pan-y',
+                                                transition: 'top 180ms ease, opacity 180ms ease, transform 180ms ease',
+                                                willChange: 'top, opacity, transform',
                                             }}
                                         >
                                             {/* Edit Mode Checkbox */}

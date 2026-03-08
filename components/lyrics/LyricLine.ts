@@ -164,6 +164,11 @@ const visibleWidthOf = (
   return widthOf(visible, measure, baseSize);
 };
 
+const rowTextOf = (text: string, lineX: number) => {
+  if (lineX > 0) return text;
+  return text.trimStart();
+};
+
 export const rowShiftOf = (
   align: "left" | "right" | undefined,
   rowWidth: number,
@@ -322,18 +327,23 @@ export const wrapWords = ({
   };
 
   atoms.forEach((atom) => {
-    const width = widthOf(atom.text, measure, baseSize);
-    const visibleWidth = visibleWidthOf(atom.text, measure, baseSize);
+    const rawVisibleWidth = visibleWidthOf(atom.text, measure, baseSize);
 
-    if (lineX > 0 && lineX + visibleWidth > maxWidth) {
+    if (lineX > 0 && lineX + rawVisibleWidth > maxWidth) {
       pushRow(words.length);
       row += 1;
       lineX = 0;
       lineY += lineHeight + wrapLineGap;
     }
 
+    const text = rowTextOf(atom.text, lineX);
+    if (!text) return;
+
+    const width = widthOf(text, measure, baseSize);
+    const visibleWidth = visibleWidthOf(text, measure, baseSize);
+
     const word: WrappedWord = {
-      text: atom.text,
+      text,
       x: lineX,
       y: lineY,
       width,
