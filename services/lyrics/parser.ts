@@ -18,19 +18,19 @@ export const MIN_INTERLUDE_DURATION = 10; // Minimum silence to render interlude
 export const MIN_SOURCE_INTERLUDE_DURATION = 3; // Minimum duration for source-data interludes (empty lines)
 
 /**
- * Parse time tag string (mm:ss.xx, mm:ss.xxx, mm:ss:xx, mm:ss:xxx) to seconds.
+ * Parse time tag string (mm:ss, mm:ss.xx, mm:ss.xxx, mm:ss:xx, mm:ss:xxx)
+ * to seconds.
  */
 export const parseTime = (timeStr: string): number => {
-  const match = timeStr.match(/(\d{2}):(\d{2})[\.:](\d{2,3})/);
+  const match = timeStr.match(/^(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?$/);
   if (!match) return 0;
 
   const minutes = parseInt(match[1], 10);
   const seconds = parseInt(match[2], 10);
   const msStr = match[3];
-  const ms = parseInt(msStr, 10);
+  const ms = msStr ? parseInt(msStr, 10) : 0;
 
-  // .xx is centiseconds (10ms), .xxx is milliseconds
-  const msValue = msStr.length === 3 ? ms / 1000 : ms / 100;
+  const msValue = !msStr ? 0 : msStr.length === 3 ? ms / 1000 : ms / 100;
 
   return minutes * 60 + seconds + msValue;
 };

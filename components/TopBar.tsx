@@ -163,7 +163,7 @@ const TopBar: React.FC<TopBarProps> = ({
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="audio/*,.lrc,.txt"
+            accept="audio/*,.lrc,.txt,.json"
             multiple
             className="hidden"
           />

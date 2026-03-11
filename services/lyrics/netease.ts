@@ -4,7 +4,7 @@
  * Supports:
  * - YRC format: [startMs,duration](wordStartMs,wordDuration,flag)word
  * - JSON metadata: {"t":0,"c":[{"tx":"text"}]}
- * - Fallback LRC: [mm:ss.xx]text
+ * - Fallback LRC: [mm:ss]text or [mm:ss.xx]text
  * 
  * Features:
  * - Single-pass YRC parsing
@@ -20,6 +20,7 @@ import {
   createLine,
   mergePunctuation,
   normalizeText,
+  parseTime,
   insertInterludes,
   filterShortInterludes,
   addDurations,
@@ -129,14 +130,13 @@ const tokenizeNetease = (content: string): NeteaseToken[] => {
     }
 
     // Fallback to LRC format
-    const lrcMatch = trimmed.match(/\[(\d{2}):(\d{2})[\.:](\d{2,3})\](.*)/);
+    const lrcMatch = trimmed.match(/\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)/);
     if (lrcMatch) {
-      const minutes = parseInt(lrcMatch[1], 10);
-      const seconds = parseInt(lrcMatch[2], 10);
-      const msStr = lrcMatch[3];
-      const ms = parseInt(msStr, 10);
-      const msValue = msStr.length === 3 ? ms / 1000 : ms / 100;
-      const time = minutes * 60 + seconds + msValue;
+      const frac = lrcMatch[3];
+      const timeStr = frac
+        ? `${lrcMatch[1]}:${lrcMatch[2]}.${frac}`
+        : `${lrcMatch[1]}:${lrcMatch[2]}`;
+      const time = parseTime(timeStr);
 
       tokens.push({
         type: "lrc",

@@ -8,7 +8,7 @@ const NETEASE_API_BASE = "http://music.163.com/api";
 const NETEASECLOUD_API_BASE = "https://163api.qijieya.cn";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
 
-const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})[\.:](\d{2,3})\](.*)$/;
+const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 
 interface NeteaseApiArtist {
   name?: string;

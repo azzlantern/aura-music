@@ -14,8 +14,8 @@ import {
   VolumeLowIcon,
   VolumeMuteFilledIcon,
   VolumeMuteIcon,
-  PauseIcon,
   PlayIcon,
+  PauseIcon,
   PrevIcon,
   NextIcon,
   SettingsIcon,
@@ -413,7 +413,7 @@ const Controls: React.FC<ControlsProps> = ({
           boxShadow: coverSpring.boxShadow,
           transform: coverSpring.scale.to((s) => `scale(${s})`),
         }}
-        className="relative aspect-square w-full rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden mb-8"
+        className="relative aspect-square w-full rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden mb-10"
       >
         {coverUrl ? (
           <SmartImage
@@ -470,12 +470,12 @@ const Controls: React.FC<ControlsProps> = ({
       </div>
 
       {/* Visualizer */}
-      <div className="w-full flex justify-center h-10 mb-2 opacity-40 px-1">
+      <div className="w-full flex justify-center h-10 mb-4 opacity-40 px-1">
         <Visualizer audioRef={audioRef} isPlaying={isPlaying} />
       </div>
 
       {/* Progress Bar */}
-      <div className="w-full flex flex-col group/bar relative mb-3 px-1">
+      <div className="w-full flex flex-col group/bar relative mb-8 px-1">
         <div className="relative w-full h-3 flex items-center cursor-pointer group">
           {/* Background Track */}
           <div className="absolute inset-x-0 h-1.5 bg-white/20 rounded-full group-hover:h-3 transition-[height] duration-200"></div>
@@ -526,7 +526,7 @@ const Controls: React.FC<ControlsProps> = ({
       </div>
 
       {/* Main Controls Row */}
-      <div className="w-full flex items-center justify-between mb-2 px-0">
+      <div className="w-full flex items-center justify-between mb-8 px-0">
         <button
           onClick={onToggleMode}
           className="text-white/70 hover:bg-white/10 hover:text-white rounded-full p-2.5 transition-colors active:bg-white/20 outline-none"
@@ -540,20 +540,20 @@ const Controls: React.FC<ControlsProps> = ({
           className="text-white hover:bg-white/10 rounded-full p-2.5 transition-colors active:bg-white/20 outline-none flex items-center justify-center transform active:scale-95"
           aria-label={dict.controls.previous}
         >
-          <PrevIcon className="w-9 h-9 fill-current" />
+          <PrevIcon className="w-8 h-8 fill-current" />
         </button>
 
         <button
           onClick={onPlayPause}
-          className="relative flex items-center justify-center p-3.5 hover:bg-white/10 rounded-full active:bg-white/20 transition-all outline-none transform active:scale-95 text-white"
+          className="relative flex items-center justify-center p-3 hover:bg-white/10 rounded-full active:bg-white/20 transition-all outline-none transform active:scale-95 text-white"
         >
-          <div className="relative w-11 h-11">
+          <div className="relative w-10 h-10 flex items-center justify-center">
             <PauseIcon
-              className={`absolute inset-0 w-full h-full fill-current transition-all duration-300 ${isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 -rotate-90"
+              className={`absolute w-full h-full fill-current transition-all duration-300 ${isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 -rotate-90"
                 }`}
             />
             <PlayIcon
-              className={`absolute inset-0 w-full h-full fill-current transition-all duration-300 ${!isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 rotate-90"
+              className={`absolute w-full h-full fill-current transition-all duration-300 ${!isPlaying ? "opacity-100 scale-100 rotate-0" : "opacity-0 scale-50 rotate-90"
                 }`}
             />
           </div>
@@ -564,7 +564,7 @@ const Controls: React.FC<ControlsProps> = ({
           className="text-white hover:bg-white/10 rounded-full p-2.5 transition-colors active:bg-white/20 outline-none flex items-center justify-center transform active:scale-95"
           aria-label={dict.controls.next}
         >
-          <NextIcon className="w-9 h-9 fill-current" />
+          <NextIcon className="w-8 h-8 fill-current" />
         </button>
 
         <div className="relative flex items-center justify-center">
@@ -580,7 +580,7 @@ const Controls: React.FC<ControlsProps> = ({
       </div>
 
       {/* Inline Volume Slider */}
-      <div className="w-full flex items-center gap-2 group/vol mb-0 px-1">
+      <div className="w-full flex items-center gap-3 group/vol mb-2 px-1 mt-2">
         <VolumeLowIcon className="w-3.5 h-3.5 text-white/60 fill-current" />
         <div className="relative flex-1 h-2 flex items-center cursor-pointer">
           <div className="absolute inset-x-0 h-1 bg-white/20 rounded-full group-hover/vol:h-2 transition-[height] duration-200"></div>

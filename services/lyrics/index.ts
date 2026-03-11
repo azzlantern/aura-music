@@ -16,7 +16,7 @@
 import { LyricLine } from "./types";
 import { parseLrc } from "./lrc";
 import { parseNeteaseLyrics, isNeteaseFormat } from "./netease";
-import { mergeTranslations } from "./translation";
+import { mergeRomanization, mergeTranslations } from "./translation";
 import { parseTtml, isTtmlFormat } from "./ttml";
 
 // Re-export types
@@ -26,7 +26,11 @@ export type { LyricLine, LyricWord } from "./types";
 export { parseLrc } from "./lrc";
 export { parseNeteaseLyrics, isNeteaseFormat } from "./netease";
 export { parseTtml, isTtmlFormat } from "./ttml";
-export { mergeTranslations, buildTranslationMap } from "./translation";
+export {
+  mergeTranslations,
+  mergeRomanization,
+  buildTranslationMap,
+} from "./translation";
 
 // Re-export utilities for backward compatibility
 export { INTERLUDE_TEXT } from "./parser";
@@ -52,32 +56,93 @@ export { parseTime as parseTimeTag, filterShortInterludes } from "./parser";
  * // Netease YRC with LRC base
  * const lyrics = parseLyrics(lrcContent, translation, { yrcContent });
  */
+type ParseLyricsOptions = {
+  yrcContent?: string;
+  romanContent?: string;
+};
+
+interface NeteaseBlob {
+  lyric?: string;
+}
+
+interface NeteasePayload {
+  lrc?: NeteaseBlob;
+  yrc?: NeteaseBlob;
+  tlyric?: NeteaseBlob;
+  romalrc?: NeteaseBlob;
+}
+
+const unwrapPayload = (
+  content: string,
+  translationContent?: string,
+  options?: ParseLyricsOptions,
+): {
+  content: string;
+  translationContent?: string;
+  options?: ParseLyricsOptions;
+} => {
+  const trimmed = content?.trim();
+  if (!trimmed || !trimmed.startsWith("{")) {
+    return { content, translationContent, options };
+  }
+
+  try {
+    const json = JSON.parse(trimmed) as NeteasePayload;
+    const lrc = json.lrc?.lyric?.trim();
+    const yrc = json.yrc?.lyric?.trim();
+    const tlyric = json.tlyric?.lyric?.trim();
+    const roman = json.romalrc?.lyric?.trim();
+    const main = lrc || yrc;
+
+    if (!main && !tlyric && !roman) {
+      return { content, translationContent, options };
+    }
+
+    return {
+      content: main ?? "",
+      translationContent: translationContent?.trim() ? translationContent : tlyric,
+      options: {
+        ...options,
+        ...(options?.yrcContent?.trim() ? {} : lrc && yrc ? { yrcContent: yrc } : {}),
+        ...(options?.romanContent?.trim() ? {} : roman ? { romanContent: roman } : {}),
+      },
+    };
+  } catch {
+    return { content, translationContent, options };
+  }
+};
+
 export const parseLyrics = (
   content: string,
   translationContent?: string,
-  options?: { yrcContent?: string }
+  options?: ParseLyricsOptions,
 ): LyricLine[] => {
-  if (!content?.trim()) return [];
+  const input = unwrapPayload(content, translationContent, options);
+  if (!input.content?.trim()) return [];
 
   // Detect format and parse
   let lines: LyricLine[];
 
-  if (isTtmlFormat(content)) {
-    lines = parseTtml(content);
-  } else if (options?.yrcContent) {
+  if (isTtmlFormat(input.content)) {
+    lines = parseTtml(input.content);
+  } else if (input.options?.yrcContent) {
     // Use LRC as base, enrich with YRC word timing
-    lines = parseNeteaseLyrics(options.yrcContent, content);
-  } else if (isNeteaseFormat(content)) {
+    lines = parseNeteaseLyrics(input.options.yrcContent, input.content);
+  } else if (isNeteaseFormat(input.content)) {
     // Pure YRC format
-    lines = parseNeteaseLyrics(content);
+    lines = parseNeteaseLyrics(input.content);
   } else {
     // Standard LRC format
-    lines = parseLrc(content);
+    lines = parseLrc(input.content);
   }
 
   // Merge translations if provided
-  if (translationContent?.trim()) {
-    lines = mergeTranslations(lines, translationContent);
+  if (input.translationContent?.trim()) {
+    lines = mergeTranslations(lines, input.translationContent);
+  }
+
+  if (input.options?.romanContent?.trim()) {
+    lines = mergeRomanization(lines, input.options.romanContent);
   }
 
   return lines;

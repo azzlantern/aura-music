@@ -222,7 +222,7 @@ export const usePlaylist = () => {
 
       fileList.forEach((file) => {
         const ext = file.name.split(".").pop()?.toLowerCase();
-        if (ext === "lrc" || ext === "txt") {
+        if (ext === "lrc" || ext === "txt" || ext === "json") {
           lyricsFiles.push(file);
         } else {
           audioFiles.push(file);
