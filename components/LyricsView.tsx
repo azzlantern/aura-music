@@ -212,10 +212,28 @@ const LyricsView: React.FC<LyricsViewProps> = ({
 
   // Per-line animation state (hover fade, press scale, blur transition)
   const lineAnimStatesRef = useRef<Map<number, LineAnimationState>>(new Map());
-  // Track which line index the mouse is currently pressing
+  // Track which line index is currently being pressed
   const pressedLineRef = useRef<number | null>(null);
-  // Track mouseDown state for press animation
-  const isMouseDownRef = useRef(false);
+  // Track pointer-down state for press animation
+  const downRef = useRef(false);
+
+  const pick = (clientY: number, rect: DOMRect) => {
+    const hitY = clientY - rect.top;
+    const focal = rect.height * 0.35;
+
+    for (let i = 0; i < lyricLines.length; i++) {
+      if (lyrics[i]?.isMetadata) continue;
+      const physics = linesState.current.get(i);
+      if (!physics) continue;
+      const y = physics.posY.current + focal;
+      const h = lyricLines[i].getCurrentHeight(visualTimeRef.current);
+      if (hitY >= y && hitY <= y + h) {
+        return i;
+      }
+    }
+
+    return null;
+  };
 
   // Mouse Tracking
   const markGesture = (x: number, y: number, gap: number) => {
@@ -234,35 +252,19 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
     mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    if (isMouseDownRef.current) {
+    if (downRef.current) {
       markGesture(e.clientX, e.clientY, 6);
     }
     handlers.onTouchMove(e);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    isMouseDownRef.current = true;
+    downRef.current = true;
     gestureRef.current.startX = e.clientX;
     gestureRef.current.startY = e.clientY;
     gestureRef.current.moved = false;
     gestureRef.current.suppress = false;
-    // Determine which line is being pressed for press animation
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickY = e.clientY - rect.top;
-    const height = rect.height;
-    const focalPointOffset = height * 0.35;
-    pressedLineRef.current = null;
-    for (let i = 0; i < lyricLines.length; i++) {
-      if (lyrics[i]?.isMetadata) continue;
-      const physics = linesState.current.get(i);
-      if (!physics) continue;
-      const visualY = physics.posY.current + focalPointOffset;
-      const h = lyricLines[i].getCurrentHeight(visualTimeRef.current);
-      if (clickY >= visualY && clickY <= visualY + h) {
-        pressedLineRef.current = i;
-        break;
-      }
-    }
+    pressedLineRef.current = pick(e.clientY, e.currentTarget.getBoundingClientRect());
     handlers.onTouchStart(e);
   };
 
@@ -270,7 +272,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     if (gestureRef.current.moved) {
       gestureRef.current.suppress = true;
     }
-    isMouseDownRef.current = false;
+    downRef.current = false;
     pressedLineRef.current = null;
     handlers.onTouchEnd();
   };
@@ -319,6 +321,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     const first = e.touches[0];
     if (first) {
+      downRef.current = true;
       gestureRef.current.startX = first.clientX;
       gestureRef.current.startY = first.clientY;
       gestureRef.current.moved = false;
@@ -328,7 +331,13 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       touchIntentRef.current.startY = first.clientY;
       touchIntentRef.current.lockDecided = false;
       touchIntentRef.current.lockedToLyrics = false;
+      pressedLineRef.current = pick(first.clientY, e.currentTarget.getBoundingClientRect());
+      handlers.onTouchStart(e);
+      return;
     }
+
+    downRef.current = false;
+    pressedLineRef.current = null;
     handlers.onTouchStart(e);
   };
 
@@ -337,6 +346,9 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     const touch = e.touches[0];
     if (touch) {
       markGesture(touch.clientX, touch.clientY, 8);
+      if (gestureRef.current.moved) {
+        pressedLineRef.current = null;
+      }
     }
     if (intent.lockedToLyrics) {
       e.stopPropagation();
@@ -352,6 +364,8 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     if (intent.lockedToLyrics) {
       e.stopPropagation();
     }
+    downRef.current = false;
+    pressedLineRef.current = null;
     handlers.onTouchEnd();
     resetTouchIntent();
   };
@@ -364,6 +378,8 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     if (intent.lockedToLyrics) {
       e.stopPropagation();
     }
+    downRef.current = false;
+    pressedLineRef.current = null;
     handlers.onTouchEnd();
     resetTouchIntent();
   };
@@ -486,7 +502,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         : pointerHover;
 
       // Is this line currently being pressed?
-      const isPressed = isMouseDownRef.current && pressedLineRef.current === index;
+      const isPressed = downRef.current && pressedLineRef.current === index;
 
       // --- Per-line animation state (smooth hover / press / blur) ---
       let animState = lineAnimStatesRef.current.get(index);
@@ -681,7 +697,7 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         if (gestureRef.current.moved) {
           gestureRef.current.suppress = true;
         }
-        isMouseDownRef.current = false;
+        downRef.current = false;
         pressedLineRef.current = null;
         handlers.onTouchEnd();
       }}
