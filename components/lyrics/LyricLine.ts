@@ -178,6 +178,20 @@ export const rowShiftOf = (
   return blockWidth - rowWidth;
 };
 
+export const alignWords = <T extends { x: number }>(
+  words: T[],
+  align: "left" | "right" | undefined,
+  textWidth: number,
+  blockWidth: number,
+): T[] => {
+  const shift = rowShiftOf(align, textWidth, blockWidth);
+  if (shift <= 0) return words;
+  return words.map((word) => ({
+    ...word,
+    x: word.x + shift,
+  }));
+};
+
 export const shouldEmphasizeWord = (word: TimedWord) => {
   if (!word.isVerbatim) return false;
 
@@ -1099,13 +1113,20 @@ export class LyricLine implements ILyricLine {
       effectiveTextWidth = Math.max(effectiveTextWidth, translationWidth);
     }
 
+    const placed = alignWords(
+      words,
+      this.lyricLine.align,
+      textWidth,
+      effectiveTextWidth,
+    );
+
     blockHeight += paddingY;
     this._height = blockHeight;
 
     this.layout = {
       y: 0, // Relative to this canvas
       height: blockHeight,
-      words,
+      words: placed,
       fullText: this.lyricLine.text,
       translation: this.lyricLine.translation,
       translationLines,
