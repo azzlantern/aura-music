@@ -1,11 +1,11 @@
 import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
-const LYRIC_API_BASE = "https://163api.qijieya.cn";
+const LYRIC_API_BASE = "https://zm.wwoyun.cn";
 const METING_API = "https://api.qijieya.cn/meting/";
-const NETEASE_SEARCH_API = "https://163api.qijieya.cn/cloudsearch";
+const NETEASE_SEARCH_API = "https://zm.wwoyun.cn/cloudsearch";
 const NETEASE_API_BASE = "http://music.163.com/api";
-const NETEASECLOUD_API_BASE = "https://163api.qijieya.cn";
+const NETEASECLOUD_API_BASE = "https://zm.wwoyun.cn";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
