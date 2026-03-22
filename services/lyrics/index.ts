@@ -69,6 +69,7 @@ interface NeteasePayload {
   lrc?: NeteaseBlob;
   yrc?: NeteaseBlob;
   tlyric?: NeteaseBlob;
+  ytlrc?: NeteaseBlob;
   romalrc?: NeteaseBlob;
 }
 
@@ -91,6 +92,7 @@ const unwrapPayload = (
     const lrc = json.lrc?.lyric?.trim();
     const yrc = json.yrc?.lyric?.trim();
     const tlyric = json.tlyric?.lyric?.trim();
+    const ytlrc = json.ytlrc?.lyric?.trim();
     const roman = json.romalrc?.lyric?.trim();
     const main = lrc || yrc;
 
@@ -100,7 +102,9 @@ const unwrapPayload = (
 
     return {
       content: main ?? "",
-      translationContent: translationContent?.trim() ? translationContent : tlyric,
+      translationContent: translationContent?.trim()
+        ? translationContent
+        : ytlrc || tlyric,
       options: {
         ...options,
         ...(options?.yrcContent?.trim() ? {} : lrc && yrc ? { yrcContent: yrc } : {}),

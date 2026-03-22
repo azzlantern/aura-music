@@ -436,7 +436,8 @@ export const fetchLyricsById = async (
 
     const rawYrc: string | undefined = lyricData?.yrc?.lyric;
     const rawLrc: string | undefined = lyricData?.lrc?.lyric;
-    const tLrcRaw: string | undefined = lyricData?.tlyric?.lyric;
+    const rawTLrc: string | undefined = lyricData?.tlyric?.lyric;
+    const rawYtl: string | undefined = lyricData?.ytlrc?.lyric;
 
     const lrcMeta = rawLrc
       ? extractMetadataLines(rawLrc)
@@ -445,10 +446,12 @@ export const fetchLyricsById = async (
       ? extractMetadataLines(rawYrc)
       : { clean: undefined, metadata: [] };
 
+    const rawTranslation = rawYtl?.trim() ? rawYtl : rawTLrc;
+
     let cleanTranslation: string | undefined;
     let translationMetadata: string[] = [];
-    if (tLrcRaw) {
-      const result = extractMetadataLines(tLrcRaw);
+    if (rawTranslation) {
+      const result = extractMetadataLines(rawTranslation);
       cleanTranslation = result.clean;
       translationMetadata = result.metadata;
     }
