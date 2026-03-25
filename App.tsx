@@ -10,14 +10,17 @@ import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
+import { useI18n } from "./hooks/useI18n";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
 import { APP_CONFIG } from "./config";
 
 const App: React.FC = () => {
   const { toast } = useToast();
+  const { dict } = useI18n();
   const playlist = usePlaylist();
   const player = usePlayer({
+    isReady: playlist.isReady,
     queue: playlist.queue,
     originalQueue: playlist.originalQueue,
     updateSongInQueue: playlist.updateSongInQueue,
@@ -199,14 +202,14 @@ const App: React.FC = () => {
     const wasEmpty = playlist.queue.length === 0;
     const result = await playlist.importFromUrl(trimmed);
     if (!result.success) {
-      toast.error(result.message ?? "Failed to load songs from URL");
+      toast.error(result.message ?? dict.app.importFail);
       return false;
     }
     if (result.songs.length > 0) {
       setTimeout(() => {
         handlePlaylistAddition(result.songs, wasEmpty);
       }, 0);
-      toast.success(`Successfully imported ${result.songs.length} songs`);
+      toast.success(dict.app.importOk(result.songs.length));
       return true;
     }
     return false;
@@ -231,8 +234,7 @@ const App: React.FC = () => {
   };
 
   const handleAddToQueue = (song: Song) => {
-    playlist.setQueue((prev) => [...prev, song]);
-    playlist.setOriginalQueue((prev) => [...prev, song]);
+    playlist.addSongs([song]);
   };
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -292,15 +294,16 @@ const App: React.FC = () => {
 
   const controlsSection = (
     <div className="flex flex-col items-center justify-center w-full h-full z-30 relative p-4">
-      <div className="relative flex flex-col items-center gap-8 w-full max-w-[360px]">
+      <div className="relative flex flex-col items-center gap-8 w-full max-w-[720px]">
         <Controls
           isPlaying={playState === PlayState.PLAYING}
           onPlayPause={togglePlay}
           currentTime={currentTime}
           duration={duration}
+          trackId={currentSong?.id || "no-song"}
           onSeek={handleSeek}
-          title={currentSong?.title || "Welcome to Aura"}
-          artist={currentSong?.artist || "Select a song"}
+          title={currentSong?.title || dict.app.welcome}
+          artist={currentSong?.artist || dict.app.selectSong}
           audioRef={audioRef}
           onNext={playNext}
           onPrev={playPrev}
@@ -321,13 +324,14 @@ const App: React.FC = () => {
           showSettingsPopup={showSettingsPopup}
           setShowSettingsPopup={setShowSettingsPopup}
         />
-
       </div>
     </div>
   );
 
   const lyricsVersion = currentSong?.lyrics ? currentSong.lyrics.length : 0;
-  const lyricsKey = currentSong ? `${currentSong.id}-${lyricsVersion}` : "no-song";
+  const lyricsKey = currentSong
+    ? `${currentSong.id}-${lyricsVersion}`
+    : "no-song";
 
   const lyricsSection = (
     <div className="w-full h-full relative z-20 flex flex-col justify-center px-4 lg:pl-12">
@@ -460,8 +464,9 @@ const App: React.FC = () => {
               }}
             >
               <span
-                className={`absolute inset-0 rounded-full bg-white/25 backdrop-blur-[30px] transition-opacity duration-200 ${activePanel === "controls" ? "opacity-90" : "opacity-60"
-                  }`}
+                className={`absolute inset-0 rounded-full bg-white/25 backdrop-blur-[30px] transition-opacity duration-200 ${
+                  activePanel === "controls" ? "opacity-90" : "opacity-60"
+                }`}
               />
             </button>
           </div>
@@ -480,6 +485,7 @@ const App: React.FC = () => {
         currentSongId={currentSong?.id}
         onPlay={playIndex}
         onImport={handleImportUrl}
+        onReorder={playlist.reorder}
         onRemove={playlist.removeSongs}
         accentColor={accentColor}
       />

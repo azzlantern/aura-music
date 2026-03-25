@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../hooks/useI18n";
 import { LinkIcon } from "./Icons";
 
 interface ImportMusicDialogProps {
@@ -13,6 +14,7 @@ const ImportMusicDialog: React.FC<ImportMusicDialogProps> = ({
   onClose,
   onImport,
 }) => {
+  const { dict } = useI18n();
   const [importInput, setImportInput] = useState("");
   const [inputType, setInputType] = useState<"url" | "id">("id");
   const [isLoading, setIsLoading] = useState(false);
