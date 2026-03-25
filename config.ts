@@ -7,7 +7,7 @@ export const APP_CONFIG = {
     // 默认歌单URL或ID
     URL: "https://music.163.com/playlist?id=17473221422",
     // 是否自动播放第一首歌
-    AUTO_PLAY: true,
+    AUTO_PLAY: false,
     // 加载延迟时间（毫秒）
     LOAD_DELAY: 500,
   },
