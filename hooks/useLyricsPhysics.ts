@@ -28,13 +28,6 @@ export interface LinePhysicsState {
   scale: SpringState;
 }
 
-const AUTO_SCROLL_SPRING: SpringConfig = {
-  mass: 1,
-  stiffness: 150,
-  damping: 22,
-  precision: 0.08,
-};
-
 const FOCAL_RATIO = 0.35;
 const CASCADE_STEP_MS = 50;
 const CASCADE_DECAY = 1.05;
@@ -133,6 +126,18 @@ const blankCascade = (): CascadeState => ({
   expires: 0,
   delays: new Map(),
 });
+
+export const lineTargetOf = (
+  nextTarget: number,
+  waiting: boolean,
+  prevTarget: number,
+) => {
+  if (waiting) {
+    return prevTarget;
+  }
+
+  return nextTarget;
+};
 
 const cascadeOf = (
   lyrics: LyricLine[],
@@ -534,7 +539,6 @@ export const useLyricsPhysics = ({
   const cascadeRef = useRef<CascadeState>(blankCascade());
   const anchorRef = useRef(-1);
   const modeRef = useRef<ScrollMode>("auto");
-  const prevYRef = useRef(0);
 
   // Track anchor changes to detect seek jumps
   const prevAnchorRef = useRef(-1);
@@ -644,7 +648,6 @@ export const useLyricsPhysics = ({
     const currentScroll = springSystem.current.getCurrent("scrollY");
     const clamped = clampScrollValue(currentScroll, false);
     scrollState.current.targetScrollY = clamped;
-    prevYRef.current = clamped;
     springSystem.current.setValue("scrollY", clamped);
   }, [clampScrollValue, clearSamples]);
 
@@ -671,7 +674,6 @@ export const useLyricsPhysics = ({
     cascadeRef.current = blankCascade();
     anchorRef.current = -1;
     prevAnchorRef.current = -1;
-    prevYRef.current = 0;
     markScrollIdle();
   }, [clearSamples, lyrics, lineHeights, markScrollIdle]);
 
@@ -807,8 +809,7 @@ export const useLyricsPhysics = ({
         const autoTarget = clampScrollValue(computeActiveScrollTarget(), false);
         sState.mode = "auto";
         sState.targetScrollY = autoTarget;
-        system.setTarget("scrollY", autoTarget, AUTO_SCROLL_SPRING);
-        spring = true;
+        system.setValue("scrollY", autoTarget);
       }
 
       modeRef.current = sState.mode;
@@ -835,8 +836,6 @@ export const useLyricsPhysics = ({
       }
 
       const currentGlobalScrollY = system.getCurrent("scrollY");
-      const prevY = prevYRef.current;
-      const delta = currentGlobalScrollY - prevY;
       const isDirectManipulation =
         sState.isDragging || sState.mode === "momentum";
       const isUserInteracting =
@@ -851,19 +850,24 @@ export const useLyricsPhysics = ({
           cascadeRef.current = blankCascade();
         }
       } else if (shifted) {
+        const delays = cascadeOf(
+          lyrics,
+          anchors,
+          currentPositions,
+          activeHeights,
+          currentGlobalScrollY,
+          containerHeight,
+          anchor,
+        );
+        const tail = Array.from(delays.values()).reduce(
+          (max, value) => Math.max(max, value),
+          0,
+        );
         cascadeRef.current = {
           anchor,
           started: now,
-          expires: now + CASCADE_CLEAR_MS,
-          delays: cascadeOf(
-            lyrics,
-            anchors,
-            currentPositions,
-            activeHeights,
-            currentGlobalScrollY,
-            containerHeight,
-            anchor,
-          ),
+          expires: now + Math.max(CASCADE_CLEAR_MS, tail + 260),
+          delays,
         };
       } else if (
         cascadeRef.current.expires > 0 &&
@@ -881,11 +885,12 @@ export const useLyricsPhysics = ({
         const waiting = delay > elapsed;
 
         if (typeof targetPos === "number") {
-          if (waiting) {
-            state.posY.target -= delta;
-          } else {
-            state.posY.target = -currentGlobalScrollY + targetPos;
-          }
+          const nextTarget = -currentGlobalScrollY + targetPos;
+          state.posY.target = lineTargetOf(
+            nextTarget,
+            waiting,
+            state.posY.target,
+          );
         }
 
         const displacement = state.posY.current - state.posY.target;
@@ -916,8 +921,6 @@ export const useLyricsPhysics = ({
           updateSpring(state.scale, SCALE_SPRING, dt);
         }
       });
-
-      prevYRef.current = currentGlobalScrollY;
     },
     [
       clampScrollValue,
