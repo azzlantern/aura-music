@@ -13,6 +13,7 @@ interface UseLyricsPhysicsProps {
   containerHeight: number; // Passed from canvas
   linePositions: number[]; // Absolute Y positions of lines (packed, no margins)
   lineHeights: number[]; // Heights of lines for centering logic
+  focusOffsets: number[]; // Anchor point within each rendered line
   marginY: number; // Base margin between lines
 }
 
@@ -240,29 +241,51 @@ export interface ActiveState {
 export const getActiveState = (
   lyrics: LyricLine[],
   currentTime: number,
+  anchors: number[] = getAnchors(lyrics),
 ): ActiveState => {
   if (!lyrics.length) {
     return { activeIndexes: [], anchorIndex: -1 };
   }
 
-  const activeIndexes: number[] = [];
+  const activeSet = new Set<number>();
   const mains: number[] = [];
   let latest = -1;
 
+  const add = (index: number) => {
+    if (index < 0 || activeSet.has(index)) return;
+    activeSet.add(index);
+    if (isMain(lyrics[index])) {
+      mains.push(index);
+    }
+  };
+
   for (let i = 0; i < lyrics.length; i++) {
     const line = lyrics[i];
-    if (line.isMetadata || line.isBackground) continue;
+    if (line.isMetadata) continue;
 
-    if (currentTime < line.time) break;
-    latest = i;
+    if (!line.isBackground && currentTime >= line.time) {
+      latest = i;
+    }
+
+    if (line.isBackground) {
+      const span = windowOf(line);
+      if (currentTime < span.start || currentTime >= span.end) {
+        continue;
+      }
+
+      add(i);
+      add(anchors[i] ?? -1);
+      continue;
+    }
+
+    if (currentTime < line.time) continue;
 
     if (currentTime >= activeEndOf(lyrics, i)) continue;
 
-    activeIndexes.push(i);
-    if (isMain(line)) {
-      mains.push(i);
-    }
+    add(i);
   }
+
+  const activeIndexes = Array.from(activeSet).sort((a, b) => a - b);
 
   return {
     activeIndexes,
@@ -433,6 +456,7 @@ export const useLyricsPhysics = ({
   containerHeight,
   linePositions,
   lineHeights,
+  focusOffsets,
   marginY,
 }: UseLyricsPhysicsProps) => {
   const anchors = useMemo(() => getAnchors(lyrics), [lyrics]);
@@ -525,6 +549,7 @@ export const useLyricsPhysics = ({
   const scrollLimitsRef = useRef({ min: 0, max: 0 });
   const cascadeRef = useRef<CascadeState>(blankCascade());
   const anchorRef = useRef(-1);
+  const modeRef = useRef<ScrollMode>("auto");
   const prevYRef = useRef(0);
 
   // Track anchor changes to detect seek jumps
@@ -628,6 +653,7 @@ export const useLyricsPhysics = ({
     scrollState.current.lastInteractionTime = getNow() - RESUME_DELAY_MS - 10;
     scrollState.current.isDragging = false;
     scrollState.current.mode = "auto";
+    modeRef.current = "auto";
     scrollState.current.touchVelocity = 0;
     clearSamples();
     cascadeRef.current = blankCascade();
@@ -694,7 +720,7 @@ export const useLyricsPhysics = ({
       const now = performance.now();
       const sState = scrollState.current;
       const system = springSystem.current;
-      const active = getActiveState(lyrics, time);
+      const active = getActiveState(lyrics, time, anchors);
       const anchor = getScrollAnchor(lyrics, time, groups);
       const activeSet = new Set(active.activeIndexes);
       anchorRef.current = anchor;
@@ -738,8 +764,8 @@ export const useLyricsPhysics = ({
         if (anchor === -1) return 0;
 
         const lineY = currentPositions[anchor] || 0;
-        const lineHeight = activeHeights[anchor] || 0;
-        return lineY + lineHeight / 2;
+        const focus = focusOffsets[anchor] ?? (activeHeights[anchor] || 0) * 0.5;
+        return lineY + focus;
       };
 
       const hold = now - sState.lastInteractionTime < RESUME_DELAY_MS;
@@ -808,6 +834,8 @@ export const useLyricsPhysics = ({
         system.setTarget("scrollY", autoTarget, AUTO_SCROLL_SPRING);
         spring = true;
       }
+
+      modeRef.current = sState.mode;
 
       if (spring) {
         system.update(dt);
@@ -924,6 +952,7 @@ export const useLyricsPhysics = ({
       homes,
       lineHeights,
       buildLayout,
+      focusOffsets,
       audioRef,
       lyrics,
     ],
@@ -936,6 +965,7 @@ export const useLyricsPhysics = ({
       const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
       scrollState.current.isDragging = true;
       scrollState.current.mode = "drag";
+      modeRef.current = "drag";
       scrollState.current.lastInteractionTime = now;
       scrollState.current.touchLastY = clientY;
       scrollState.current.touchLastTime = now;
@@ -981,14 +1011,17 @@ export const useLyricsPhysics = ({
 
       if (Math.abs(currentScroll - limit) > 0.01) {
         scrollState.current.mode = "rebound";
+        modeRef.current = "rebound";
         scrollState.current.touchVelocity = 0;
         scrollState.current.targetScrollY = limit;
         system.setTarget("scrollY", limit, REBOUND_SPRING);
       } else if (Math.abs(vel) >= MIN_SCROLL_VELOCITY) {
         scrollState.current.mode = "momentum";
+        modeRef.current = "momentum";
         scrollState.current.touchVelocity = vel;
       } else {
         scrollState.current.mode = "manual";
+        modeRef.current = "manual";
         scrollState.current.touchVelocity = 0;
       }
 
@@ -1011,6 +1044,7 @@ export const useLyricsPhysics = ({
           : system.getCurrent("scrollY");
       const manualTarget = clampScrollValue(base + delta, false);
       scrollState.current.mode = "wheel";
+      modeRef.current = "wheel";
       scrollState.current.isDragging = false;
       scrollState.current.targetScrollY = manualTarget;
       scrollState.current.touchVelocity = 0;
@@ -1026,6 +1060,7 @@ export const useLyricsPhysics = ({
     anchorRef,
     handlers,
     linesState,
+    modeRef,
     updatePhysics,
   };
 };

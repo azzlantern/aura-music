@@ -441,6 +441,7 @@ export class LyricLine implements ILyricLine {
   private bgStamp = -1;
   private bgTime = Number.NaN;
   private bgShow = 0;
+  private mainHeight = 0;
 
   private getBackgroundBounds() {
     const start = this.lyricLine.time;
@@ -1044,6 +1045,7 @@ export class LyricLine implements ILyricLine {
       this.isMobile,
       fontScale,
     );
+    this.mainHeight = mainHeight;
 
     const baseSize = (this.isMobile ? 32 : 40) * fontScale;
     const paddingY = this.isMobile ? 18 : 24;
@@ -1245,6 +1247,19 @@ export class LyricLine implements ILyricLine {
       return this._height;
     }
     return this.hasBackgroundWindow(currentTime) ? this._height : 0;
+  }
+
+  public getFocusOffset() {
+    if (!this.layout || this.layout.words.length === 0 || this.mainHeight <= 0) {
+      return this._height * 0.5;
+    }
+
+    const top = this.layout.words.reduce((min, word) => Math.min(min, word.y), Infinity);
+    if (!Number.isFinite(top)) {
+      return this._height * 0.5;
+    }
+
+    return top + this.mainHeight * 0.5;
   }
 
   public getLogicalWidth() {

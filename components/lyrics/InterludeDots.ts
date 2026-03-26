@@ -272,6 +272,10 @@ export class InterludeDots implements ILyricLine {
         return this.isActiveTime(currentTime) ? this._height : 0;
     }
 
+    public getFocusOffset() {
+        return this._height * 0.5;
+    }
+
     public isInterlude() {
         return true;
     }
