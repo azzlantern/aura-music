@@ -152,11 +152,16 @@ const TTML_META_LABELS: Record<string, string> = {
   ttmlAuthorGithubLogin: "TTML 歌词贡献者",
 };
 
+const TTML_AUTHOR_KEY = "ttmlAuthorGithubLogin";
+const TTML_SOURCE_TEXT = "TTML 歌词来源: AMLL TTML Database";
 const TTML_META_KEYS = Object.keys(TTML_META_LABELS);
+const TTML_DISPLAY_KEYS = TTML_META_KEYS.filter((key) => key !== TTML_AUTHOR_KEY);
 const HAN_REGEX = /\p{Script=Han}/u;
 const KANA_REGEX = /\p{Script=Hiragana}|\p{Script=Katakana}/u;
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const LATIN_REGEX = /[A-Za-z]/;
+const NETEASE_CONTRIBUTOR_REGEX = /^(歌词贡献者|翻译贡献者)\s*[:：]/;
+const TTML_CONTRIBUTOR_REGEX = /^TTML 歌词贡献者\s*[:：]/;
 
 const BAD_META_HINTS = [
   "instrumental",
@@ -267,7 +272,7 @@ export const extractTtmlMetadata = (content?: string): string[] => {
 
   const meta: string[] = [];
 
-  TTML_META_KEYS.forEach((key) => {
+  TTML_DISPLAY_KEYS.forEach((key) => {
     const list = groups.get(key);
     if (!list?.length) return;
 
@@ -276,11 +281,56 @@ export const extractTtmlMetadata = (content?: string): string[] => {
     meta.push(`${TTML_META_LABELS[key]}: ${value}`);
   });
 
-  if (meta.length > 0) {
-    meta.push("TTML 歌词来源: AMLL TTML Database");
+  const author = groups.get(TTML_AUTHOR_KEY);
+  const contributor = author?.length
+    ? pickMeta(TTML_AUTHOR_KEY, author)
+    : undefined;
+
+  if (meta.length > 0 || contributor) meta.push(TTML_SOURCE_TEXT);
+  if (contributor) {
+    meta.push(`${TTML_META_LABELS[TTML_AUTHOR_KEY]}: ${contributor}`);
   }
 
   return meta;
+};
+
+const isNeteaseContributor = (text: string): boolean => {
+  return NETEASE_CONTRIBUTOR_REGEX.test(text.trim());
+};
+
+const hasTtmlContributor = (list: string[]): boolean => {
+  return list.some((text) => TTML_CONTRIBUTOR_REGEX.test(text.trim()));
+};
+
+export const mergeMetadata = (input: {
+  lrc?: string[];
+  yrc?: string[];
+  translation?: string[];
+  ttml?: string[];
+  lyricUser?: string;
+  transUser?: string;
+}): string[] => {
+  const ttml = input.ttml ?? [];
+  const keepNeteaseContributors = !hasTtmlContributor(ttml);
+  const filter = keepNeteaseContributors
+    ? (text: string) => Boolean(text.trim())
+    : (text: string) => Boolean(text.trim()) && !isNeteaseContributor(text);
+  const meta = new Set<string>([
+    ...(input.lrc ?? []).filter(filter),
+    ...(input.yrc ?? []).filter(filter),
+    ...(input.translation ?? []).filter(filter),
+    ...ttml,
+  ]);
+
+  if (keepNeteaseContributors && input.transUser?.trim()) {
+    meta.add(`翻译贡献者: ${input.transUser.trim()}`);
+  }
+
+  if (keepNeteaseContributors && input.lyricUser?.trim()) {
+    meta.add(`歌词贡献者: ${input.lyricUser.trim()}`);
+  }
+
+  return Array.from(meta);
 };
 
 export const getNeteaseAudioUrl = (id: string) => {
@@ -458,20 +508,14 @@ export const fetchLyricsById = async (
 
     const ttmlMetadata = extractTtmlMetadata(ttmlContent ?? undefined);
 
-    const metadataSet = new Set<string>([
-      ...lrcMeta.metadata,
-      ...yrcMeta.metadata,
-      ...translationMetadata,
-      ...ttmlMetadata,
-    ]);
-
-    if (lyricData?.transUser?.nickname) {
-      metadataSet.add(`翻译贡献者: ${lyricData.transUser.nickname}`);
-    }
-
-    if (lyricData?.lyricUser?.nickname) {
-      metadataSet.add(`歌词贡献者: ${lyricData.lyricUser.nickname}`);
-    }
+    const metadata = mergeMetadata({
+      lrc: lrcMeta.metadata,
+      yrc: yrcMeta.metadata,
+      translation: translationMetadata,
+      ttml: ttmlMetadata,
+      lyricUser: lyricData?.lyricUser?.nickname,
+      transUser: lyricData?.transUser?.nickname,
+    });
 
     const baseLyrics = lrcMeta.clean || yrcMeta.clean || rawLrc || rawYrc;
 
@@ -487,7 +531,7 @@ export const fetchLyricsById = async (
       yrc: yrcForEnrichment,
       tLrc: cleanTranslation,
       ttml: ttmlContent ?? undefined,
-      metadata: Array.from(metadataSet),
+      metadata,
     };
   } catch (e) {
     console.error("Lyric fetch pipeline error", e);
