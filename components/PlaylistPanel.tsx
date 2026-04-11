@@ -13,9 +13,8 @@ import {
 import { useI18n } from "../hooks/useI18n";
 import { useKeyboardScope } from "../hooks/useKeyboardScope";
 import ImportMusicDialog from "./ImportMusicDialog";
-import SmartImage from "./SmartImage";
 
-const IOS_SCROLLBAR_STYLES = `
+const PANEL_STYLES = `
   .playlist-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.65) rgba(255, 255, 255, 0.02);
@@ -39,7 +38,15 @@ const IOS_SCROLLBAR_STYLES = `
   .playlist-scrollbar::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.72));
   }
+  @keyframes eq-bounce {
+    0%, 100% { transform: scaleY(0.4); opacity: 0.8; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
 `;
+
+const ITEM_HEIGHT = 74;
+const CARD_HEIGHT = 66;
+const OVERSCAN = 5;
 
 interface PlaylistPanelProps {
     isOpen: boolean;
@@ -83,8 +90,60 @@ interface RowState {
     view: number;
 }
 
+interface ArtProps {
+  src?: string;
+  alt: string;
+  dim?: boolean;
+  eager?: boolean;
+}
+
 const HOLD_MS = 220;
 const HOLD_SLOP = 10;
+
+const Art = React.memo(({ src, alt, dim = false, eager = false }: ArtProps) => {
+  if (!src) {
+    return (
+      <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg border border-white/5 bg-gray-800 shadow-sm">
+        <div className="flex h-full w-full items-center justify-center bg-gray-700 text-[10px] text-white/20">♪</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg border border-white/5 bg-gray-800 shadow-sm">
+      <img
+        src={src}
+        alt={alt}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        draggable={false}
+        className={`block h-full w-full object-cover transition-opacity duration-300 ${dim ? "opacity-40 blur-[1px]" : ""}`.trim()}
+      />
+    </div>
+  );
+});
+
+Art.displayName = "Art";
+
+const sourceAt = (view: number, drag: DragState | null) => {
+  if (!drag) {
+    return view;
+  }
+
+  if (view === drag.to) {
+    return drag.index;
+  }
+
+  if (drag.index < drag.to && view >= drag.index && view < drag.to) {
+    return view + 1;
+  }
+
+  if (drag.index > drag.to && view > drag.to && view <= drag.index) {
+    return view - 1;
+  }
+
+  return view;
+};
 
 const move = (list: string[], from: number, to: number) => {
     const next = [...list];
@@ -96,7 +155,7 @@ const move = (list: string[], from: number, to: number) => {
     return next;
 };
 
-const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
+const PlaylistPanel = React.memo(({
     isOpen,
     onClose,
     queue,
@@ -106,7 +165,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     onReorder,
     onRemove,
     accentColor
-}) => {
+}: PlaylistPanelProps) => {
     const { dict } = useI18n();
     const [isAdding, setIsAdding] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -120,10 +179,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     const dragRef = useRef<DragState | null>(null);
     const skipRef = useRef(false);
     const [scrollTop, setScrollTop] = useState(0);
-
-    // Virtualization Constants
-    const ITEM_HEIGHT = 74; // Approx height of each item (including margin)
-    const OVERSCAN = 5;
+    const [listHeight, setListHeight] = useState(0);
 
     // ESC key support using keyboard scope
     useKeyboardScope(
@@ -141,10 +197,10 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
     // Handle animation visibility with react-spring
     const transitions = useTransition(isOpen, {
-        from: { opacity: 0, transform: 'translateX(20px)' },
-        enter: { opacity: 1, transform: 'translateX(0px)' },
-        leave: { opacity: 0, transform: 'translateX(20px)' },
-        config: { tension: 300, friction: 30 },
+        from: { opacity: 0, transform: 'translateY(20px) scale(0.95)' },
+        enter: { opacity: 1, transform: 'translateY(0px) scale(1)' },
+        leave: { opacity: 0, transform: 'translateY(20px) scale(0.95)' },
+        config: { tension: 280, friction: 24 }, // Rebound feel
         onRest: () => {
             if (!isOpen) {
                 setIsEditing(false);
@@ -159,7 +215,10 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
             const index = queue.findIndex(s => s.id === currentSongId);
             if (index !== -1) {
                 const containerHeight = listRef.current.clientHeight;
-                const targetScroll = (index * ITEM_HEIGHT) - (containerHeight / 2) + (ITEM_HEIGHT / 2);
+                const targetScroll = Math.max(
+                    0,
+                    (index * ITEM_HEIGHT) - (containerHeight / 2) + (ITEM_HEIGHT / 2),
+                );
                 listRef.current.scrollTop = targetScroll;
                 setScrollTop(targetScroll);
             } else {
@@ -263,26 +322,6 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         );
     }, [queue.length]);
 
-    const getView = useCallback((index: number) => {
-        if (!drag) {
-            return index;
-        }
-
-        if (drag.index === index) {
-            return drag.to;
-        }
-
-        if (drag.index < drag.to && index > drag.index && index <= drag.to) {
-            return index - 1;
-        }
-
-        if (drag.index > drag.to && index >= drag.to && index < drag.index) {
-            return index + 1;
-        }
-
-        return index;
-    }, [drag]);
-
     const syncGhost = useCallback((state: DragState | null) => {
         if (!state || !ghostRef.current) {
             return;
@@ -294,6 +333,32 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
     useLayoutEffect(() => {
         syncGhost(drag);
     }, [drag, syncGhost]);
+
+    useLayoutEffect(() => {
+        const list = listRef.current;
+        if (!list) {
+            return;
+        }
+
+        const sync = () => {
+            setListHeight(list.clientHeight);
+        };
+
+        sync();
+
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+
+        const observer = new ResizeObserver(() => {
+            sync();
+        });
+
+        observer.observe(list);
+        return () => {
+            observer.disconnect();
+        };
+    }, [isOpen]);
 
     const beginDrag = useCallback((state: PressState, row: HTMLDivElement) => {
         const rect = row.getBoundingClientRect();
@@ -446,30 +511,36 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
     const { virtualItems, totalHeight } = useMemo(() => {
         const totalHeight = queue.length * ITEM_HEIGHT;
-        const containerHeight = 600; // Approx max height
+        if (queue.length === 0) {
+            return {
+                virtualItems: [],
+                totalHeight,
+            };
+        }
+
+        const height = listHeight || 600;
 
         let startIndex = Math.floor(scrollTop / ITEM_HEIGHT);
-        let endIndex = Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT);
+        let endIndex = Math.ceil((scrollTop + height) / ITEM_HEIGHT);
 
         startIndex = Math.max(0, startIndex - OVERSCAN);
         endIndex = Math.min(queue.length, endIndex + OVERSCAN);
 
-        const virtualItems = queue.reduce<RowState[]>((list, song, index) => {
-            const view = getView(index);
-
-            if (view < startIndex || view >= endIndex) {
-                return list;
+        const virtualItems: RowState[] = [];
+        for (let view = startIndex; view < endIndex; view += 1) {
+            const index = drag ? sourceAt(view, drag) : view;
+            const song = queue[index];
+            if (!song) {
+                continue;
             }
-
-            list.push({ song, index, view });
-            return list;
-        }, []);
+            virtualItems.push({ song, index, view });
+        }
 
         return {
             virtualItems,
             totalHeight,
         };
-    }, [getView, queue, scrollTop]);
+    }, [drag, listHeight, queue, scrollTop]);
 
     useEffect(() => {
         if (!drag) {
@@ -530,7 +601,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
     return (
         <>
-            <style>{IOS_SCROLLBAR_STYLES}</style>
+            <style>{PANEL_STYLES}</style>
             {drag && (
                 <div
                     ref={ghostRef}
@@ -543,18 +614,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                     }}
                 >
                     <div className="flex h-[66px] scale-[1.02] items-center gap-3 rounded-2xl border border-white/10 bg-black/45 px-2 shadow-[0_24px_50px_rgba(0,0,0,0.35)] backdrop-blur-[28px]">
-                        <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800 border border-white/5 shadow-sm">
-                            {drag.song.coverUrl ? (
-                                <SmartImage
-                                    src={drag.song.coverUrl}
-                                    alt={drag.song.title}
-                                    containerClassName="w-full h-full"
-                                    imgClassName="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
-                            )}
-                        </div>
+                        <Art src={drag.song.coverUrl} alt={drag.song.title} eager />
                         <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                             <div
                                 className="text-[15px] font-semibold truncate leading-tight"
@@ -576,16 +636,16 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
             {transitions((style, item) => item && (
                 <animated.div
                     ref={panelRef}
-                    style={style}
+                    style={{ ...style, maxHeight: '60vh' }}
                     className={`
-                        fixed top-0 bottom-0 right-0
-                        w-[50vw] max-w-[100vw]
-                        bg-black/40 backdrop-blur-[50px] saturate-150
-                        shadow-[-10px_0_30px_rgba(0,0,0,0.3)] 
-                        border-l border-white/10
-                        rounded-l-3xl
-                        z-50
+                        absolute bottom-full right-0 mb-4 z-50
+                        w-[340px] 
+                        bg-black/10 backdrop-blur-[100px] saturate-150
+                        rounded-[32px] 
+                        shadow-[0_20px_50px_rgba(0,0,0,0.3)] 
+                        border border-white/5
                         flex flex-col overflow-hidden
+                        origin-bottom-right
                     `}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -668,7 +728,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
                                     return (
                                         <div
-                                         key={song.id}
+                                            key={song.id}
                                             data-song-row={song.id}
                                              onPointerDown={(e) => handlePress(e, song, index)}
                                             onContextMenu={(e) => {
@@ -691,8 +751,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                  `}
                                             style={{
                                                 top: `${view * ITEM_HEIGHT}px`,
-                                                // Adjust height within the slot if needed, ITEM_HEIGHT includes gap
-                                                height: '66px',
+                                                height: `${CARD_HEIGHT}px`,
                                                 touchAction: isEditing ? 'auto' : 'pan-y',
                                                 transition: 'top 180ms ease, opacity 180ms ease, transform 180ms ease',
                                                 willChange: 'top, opacity, transform',
@@ -701,9 +760,9 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                             {/* Edit Mode Checkbox */}
                                             {isEditing && (
                                                 <div className={`
-                                                    w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ml-1
-                                                    ${isSelected ? 'border-transparent' : 'border-white/20 group-hover:border-white/40'}
-                                                `}
+                                        w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ml-1
+                                        ${isSelected ? 'border-transparent' : 'border-white/20 group-hover:border-white/40'}
+                                    `}
                                                     style={{ backgroundColor: isSelected ? accentColor : 'transparent' }}
                                                 >
                                                     {isSelected && (
@@ -713,17 +772,12 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                             )}
 
                                             {/* Cover & Indicator */}
-                                            <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-800 border border-white/5 shadow-sm">
-                                                {song.coverUrl ? (
-                                                    <SmartImage
-                                                        src={song.coverUrl}
-                                                        alt={song.title}
-                                                        containerClassName="w-full h-full"
-                                                        imgClassName={`w-full h-full object-cover transition-opacity duration-300 ${isCurrent && !isEditing ? 'opacity-40 blur-[1px]' : ''}`}
-                                                    />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center bg-gray-700 text-white/20 text-[10px]">♪</div>
-                                                )}
+                                            <div className="relative">
+                                                <Art
+                                                    src={song.coverUrl}
+                                                    alt={song.title}
+                                                    dim={isCurrent && !isEditing}
+                                                />
 
                                                 {/* Redesigned Now Playing Indicator (Equalizer) */}
                                                 {isCurrent && !isEditing && (
@@ -731,18 +785,12 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                                         <div className="w-[3px] bg-current rounded-full animate-[eq-bounce_1s_ease-in-out_infinite]" style={{ height: '12px', color: accentColor }}></div>
                                                         <div className="w-[3px] bg-current rounded-full animate-[eq-bounce_1s_ease-in-out_infinite_0.2s]" style={{ height: '20px', color: accentColor }}></div>
                                                         <div className="w-[3px] bg-current rounded-full animate-[eq-bounce_1s_ease-in-out_infinite_0.4s]" style={{ height: '15px', color: accentColor }}></div>
-                                                        <style>{`
-                                                @keyframes eq-bounce {
-                                                    0%, 100% { transform: scaleY(0.4); opacity: 0.8; }
-                                                    50% { transform: scaleY(1.0); opacity: 1; }
-                                                }
-                                            `}</style>
                                                     </div>
                                                 )}
-                                            </div >
+                                            </div>
 
                                             {/* Text */}
-                                            <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                                             <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                                                  <div className={`text-[15px] font-semibold truncate leading-tight transition-colors duration-300`}
                                                      style={{ color: isCurrent ? accentColor : 'rgba(255,255,255,0.9)' }}>
                                                      {song.title}
@@ -780,7 +828,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
                                  })}
                             </div>
                         )}
-                    </div >
+                    </div>
 
                 </animated.div>
             ))}
@@ -793,6 +841,8 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
             />
         </>
     );
-};
+});
+
+PlaylistPanel.displayName = "PlaylistPanel";
 
 export default PlaylistPanel;

@@ -13,6 +13,7 @@ interface UseLyricsPhysicsProps {
   containerHeight: number; // Passed from canvas
   linePositions: number[]; // Absolute Y positions of lines (packed, no margins)
   lineHeights: number[]; // Heights of lines for centering logic
+  focusOffsets: number[]; // Anchor point within each rendered line
   marginY: number; // Base margin between lines
 }
 
@@ -27,14 +28,7 @@ export interface LinePhysicsState {
   scale: SpringState;
 }
 
-const AUTO_SCROLL_SPRING: SpringConfig = {
-  mass: 1,
-  stiffness: 150,
-  damping: 22,
-  precision: 0.08,
-};
-
-const FOCAL_RATIO = 0.35;
+const FOCAL_RATIO = 0.25;
 const CASCADE_STEP_MS = 50;
 const CASCADE_DECAY = 1.05;
 const CASCADE_CLEAR_MS = 400;
@@ -82,6 +76,13 @@ const SCALE_SPRING: SpringConfig = {
   precision: 0.001,
 };
 
+const SEEK_POS_SPRING: SpringConfig = {
+  mass: 1.08,
+  stiffness: 124,
+  damping: 20,
+  precision: 0.1,
+};
+
 const USER_SCROLL_SPRING: SpringConfig = {
   mass: 0.9,
   stiffness: 200,
@@ -99,6 +100,15 @@ const REBOUND_SPRING: SpringConfig = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+const clampAbs = (value: number, max: number) => {
+  if (max <= 0) return 0;
+  return clamp(value, -max, max);
+};
+
+const seekSpeedOf = (view: number) => {
+  return clamp(Math.max(1, view) * 1.6, 1100, 1600);
+};
+
 const RUBBER_BAND_CONSTANT = 1.2;
 const MOMENTUM_FRICTION = 0.955;
 const EDGE_FRICTION = 0.87;
@@ -107,6 +117,7 @@ const MAX_SCROLL_VELOCITY = 3600;
 const WHEEL_SCROLL_GAIN = 0.95;
 const SAMPLE_WINDOW_MS = 120;
 const SAMPLE_LIMIT = 8;
+const SEEK_GAP = 0.2;
 const BG_LEAD = 0.9;
 const BG_TRAIL = 0.45;
 const MERGE_EPS = 1e-3;
@@ -132,6 +143,30 @@ const blankCascade = (): CascadeState => ({
   expires: 0,
   delays: new Map(),
 });
+
+export const lineTargetOf = (
+  nextTarget: number,
+  waiting: boolean,
+  prevTarget: number,
+) => {
+  if (waiting) {
+    return prevTarget;
+  }
+
+  return nextTarget;
+};
+
+export const isJumping = (
+  anchorJump: number,
+  time: number,
+  audioTime?: number,
+  seeking = false,
+) => {
+  if (seeking) return true;
+  if (anchorJump > 5) return true;
+  if (!Number.isFinite(audioTime)) return false;
+  return Math.abs(audioTime - time) > SEEK_GAP;
+};
 
 const cascadeOf = (
   lyrics: LyricLine[],
@@ -240,29 +275,51 @@ export interface ActiveState {
 export const getActiveState = (
   lyrics: LyricLine[],
   currentTime: number,
+  anchors: number[] = getAnchors(lyrics),
 ): ActiveState => {
   if (!lyrics.length) {
     return { activeIndexes: [], anchorIndex: -1 };
   }
 
-  const activeIndexes: number[] = [];
+  const activeSet = new Set<number>();
   const mains: number[] = [];
   let latest = -1;
 
+  const add = (index: number) => {
+    if (index < 0 || activeSet.has(index)) return;
+    activeSet.add(index);
+    if (isMain(lyrics[index])) {
+      mains.push(index);
+    }
+  };
+
   for (let i = 0; i < lyrics.length; i++) {
     const line = lyrics[i];
-    if (line.isMetadata || line.isBackground) continue;
+    if (line.isMetadata) continue;
 
-    if (currentTime < line.time) break;
-    latest = i;
+    if (!line.isBackground && currentTime >= line.time) {
+      latest = i;
+    }
+
+    if (line.isBackground) {
+      const span = windowOf(line);
+      if (currentTime < span.start || currentTime >= span.end) {
+        continue;
+      }
+
+      add(i);
+      add(anchors[i] ?? -1);
+      continue;
+    }
+
+    if (currentTime < line.time) continue;
 
     if (currentTime >= activeEndOf(lyrics, i)) continue;
 
-    activeIndexes.push(i);
-    if (isMain(line)) {
-      mains.push(i);
-    }
+    add(i);
   }
+
+  const activeIndexes = Array.from(activeSet).sort((a, b) => a - b);
 
   return {
     activeIndexes,
@@ -433,6 +490,7 @@ export const useLyricsPhysics = ({
   containerHeight,
   linePositions,
   lineHeights,
+  focusOffsets,
   marginY,
 }: UseLyricsPhysicsProps) => {
   const anchors = useMemo(() => getAnchors(lyrics), [lyrics]);
@@ -440,22 +498,6 @@ export const useLyricsPhysics = ({
     () => getScrollGroups(lyrics, anchors),
     [anchors, lyrics],
   );
-  const homes = useMemo(() => {
-    const list = new Array(lyrics.length).fill(-1);
-
-    groups.forEach((group) => {
-      group.items.forEach((index) => {
-        list[index] = group.start;
-      });
-    });
-
-    anchors.forEach((anchor, index) => {
-      if (!lyrics[index]?.isBackground) return;
-      list[index] = anchor >= 0 && list[anchor] >= 0 ? list[anchor] : anchor;
-    });
-
-    return list;
-  }, [anchors, groups, lyrics]);
 
   const buildLayout = useCallback(
     (heights: number[]) => {
@@ -525,7 +567,7 @@ export const useLyricsPhysics = ({
   const scrollLimitsRef = useRef({ min: 0, max: 0 });
   const cascadeRef = useRef<CascadeState>(blankCascade());
   const anchorRef = useRef(-1);
-  const prevYRef = useRef(0);
+  const modeRef = useRef<ScrollMode>("auto");
 
   // Track anchor changes to detect seek jumps
   const prevAnchorRef = useRef(-1);
@@ -628,13 +670,13 @@ export const useLyricsPhysics = ({
     scrollState.current.lastInteractionTime = getNow() - RESUME_DELAY_MS - 10;
     scrollState.current.isDragging = false;
     scrollState.current.mode = "auto";
+    modeRef.current = "auto";
     scrollState.current.touchVelocity = 0;
     clearSamples();
     cascadeRef.current = blankCascade();
     const currentScroll = springSystem.current.getCurrent("scrollY");
     const clamped = clampScrollValue(currentScroll, false);
     scrollState.current.targetScrollY = clamped;
-    prevYRef.current = clamped;
     springSystem.current.setValue("scrollY", clamped);
   }, [clampScrollValue, clearSamples]);
 
@@ -661,7 +703,6 @@ export const useLyricsPhysics = ({
     cascadeRef.current = blankCascade();
     anchorRef.current = -1;
     prevAnchorRef.current = -1;
-    prevYRef.current = 0;
     markScrollIdle();
   }, [clearSamples, lyrics, lineHeights, markScrollIdle]);
 
@@ -670,13 +711,14 @@ export const useLyricsPhysics = ({
     state: SpringState,
     config: SpringConfig,
     dt: number,
+    maxVelocity = Number.POSITIVE_INFINITY,
   ) => {
     const displacement = state.current - state.target;
     const springForce = -config.stiffness * displacement;
     const dampingForce = -config.damping * state.velocity;
     const acceleration = (springForce + dampingForce) / config.mass;
 
-    state.velocity += acceleration * dt;
+    state.velocity = clampAbs(state.velocity + acceleration * dt, maxVelocity);
     state.current += state.velocity * dt;
 
     if (
@@ -694,7 +736,7 @@ export const useLyricsPhysics = ({
       const now = performance.now();
       const sState = scrollState.current;
       const system = springSystem.current;
-      const active = getActiveState(lyrics, time);
+      const active = getActiveState(lyrics, time, anchors);
       const anchor = getScrollAnchor(lyrics, time, groups);
       const activeSet = new Set(active.activeIndexes);
       anchorRef.current = anchor;
@@ -702,14 +744,6 @@ export const useLyricsPhysics = ({
       const activeHeights = (
         layoutHeights && layoutHeights.length > 0 ? layoutHeights : lineHeights
       ).slice();
-
-      if (anchor >= 0) {
-        activeHeights.forEach((_, index) => {
-          if (!lyrics[index]?.isBackground) return;
-          if (homes[index] < 0 || homes[index] >= anchor) return;
-          activeHeights[index] = 0;
-        });
-      }
 
       const layout = buildLayout(activeHeights);
       const currentPositions = layout.positions;
@@ -732,14 +766,17 @@ export const useLyricsPhysics = ({
       }
 
       prevAnchorRef.current = anchor;
-      const shouldSnap = anchorJump > 5 || Boolean(audioRef.current?.seeking);
+      const seek = Boolean(audioRef.current?.seeking);
+      const audioTime = audioRef.current?.currentTime;
+      const jumping = isJumping(anchorJump, time, audioTime, seek);
+      const shouldSnap = !jumping && anchorJump > 12;
 
       const computeActiveScrollTarget = () => {
         if (anchor === -1) return 0;
 
         const lineY = currentPositions[anchor] || 0;
-        const lineHeight = activeHeights[anchor] || 0;
-        return lineY + lineHeight / 2;
+        const focus = focusOffsets[anchor] ?? (activeHeights[anchor] || 0) * 0.5;
+        return lineY + focus;
       };
 
       const hold = now - sState.lastInteractionTime < RESUME_DELAY_MS;
@@ -805,9 +842,10 @@ export const useLyricsPhysics = ({
         const autoTarget = clampScrollValue(computeActiveScrollTarget(), false);
         sState.mode = "auto";
         sState.targetScrollY = autoTarget;
-        system.setTarget("scrollY", autoTarget, AUTO_SCROLL_SPRING);
-        spring = true;
+        system.setValue("scrollY", autoTarget);
       }
+
+      modeRef.current = sState.mode;
 
       if (spring) {
         system.update(dt);
@@ -831,8 +869,6 @@ export const useLyricsPhysics = ({
       }
 
       const currentGlobalScrollY = system.getCurrent("scrollY");
-      const prevY = prevYRef.current;
-      const delta = currentGlobalScrollY - prevY;
       const isDirectManipulation =
         sState.isDragging || sState.mode === "momentum";
       const isUserInteracting =
@@ -842,24 +878,29 @@ export const useLyricsPhysics = ({
         (sState.mode === "manual" && hold);
 
       const shifted = prevAnchorIndex !== -1 && anchor !== prevAnchorIndex;
-      if (shouldSnap || isUserInteracting || anchor < 0) {
+      if (shouldSnap || isUserInteracting || anchor < 0 || jumping) {
         if (cascadeRef.current.delays.size > 0) {
           cascadeRef.current = blankCascade();
         }
       } else if (shifted) {
+        const delays = cascadeOf(
+          lyrics,
+          anchors,
+          currentPositions,
+          activeHeights,
+          currentGlobalScrollY,
+          containerHeight,
+          anchor,
+        );
+        const tail = Array.from(delays.values()).reduce(
+          (max, value) => Math.max(max, value),
+          0,
+        );
         cascadeRef.current = {
           anchor,
           started: now,
-          expires: now + CASCADE_CLEAR_MS,
-          delays: cascadeOf(
-            lyrics,
-            anchors,
-            currentPositions,
-            activeHeights,
-            currentGlobalScrollY,
-            containerHeight,
-            anchor,
-          ),
+          expires: now + Math.max(CASCADE_CLEAR_MS, tail + 260),
+          delays,
         };
       } else if (
         cascadeRef.current.expires > 0 &&
@@ -877,26 +918,41 @@ export const useLyricsPhysics = ({
         const waiting = delay > elapsed;
 
         if (typeof targetPos === "number") {
-          if (waiting) {
-            state.posY.target -= delta;
+          const nextTarget = -currentGlobalScrollY + targetPos;
+          if (jumping) {
+            state.posY.target = nextTarget;
           } else {
-            state.posY.target = -currentGlobalScrollY + targetPos;
+            state.posY.target = lineTargetOf(
+              nextTarget,
+              waiting,
+              state.posY.target,
+            );
           }
         }
 
         const displacement = state.posY.current - state.posY.target;
 
-        if (shouldSnap || Math.abs(displacement) > containerHeight * 0.75) {
+        if (
+          shouldSnap ||
+          (!jumping && Math.abs(displacement) > containerHeight * 0.75)
+        ) {
           state.posY.current = state.posY.target;
           state.posY.velocity = 0;
         } else {
           const posConfig =
-            isDirectManipulation
+            jumping
+              ? SEEK_POS_SPRING
+              : isDirectManipulation
               ? getDragPosSpring(relativeIndex)
               : isUserInteracting
                 ? getHoldPosSpring(relativeIndex)
                 : getLinePosSpring(relativeIndex);
-          updateSpring(state.posY, posConfig, dt);
+          updateSpring(
+            state.posY,
+            posConfig,
+            dt,
+            jumping ? seekSpeedOf(containerHeight) : Number.POSITIVE_INFINITY,
+          );
         }
 
         const targetScale = activeSet.has(index)
@@ -912,8 +968,6 @@ export const useLyricsPhysics = ({
           updateSpring(state.scale, SCALE_SPRING, dt);
         }
       });
-
-      prevYRef.current = currentGlobalScrollY;
     },
     [
       clampScrollValue,
@@ -921,9 +975,9 @@ export const useLyricsPhysics = ({
       currentTime,
       groups,
       anchors,
-      homes,
       lineHeights,
       buildLayout,
+      focusOffsets,
       audioRef,
       lyrics,
     ],
@@ -936,6 +990,7 @@ export const useLyricsPhysics = ({
       const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
       scrollState.current.isDragging = true;
       scrollState.current.mode = "drag";
+      modeRef.current = "drag";
       scrollState.current.lastInteractionTime = now;
       scrollState.current.touchLastY = clientY;
       scrollState.current.touchLastTime = now;
@@ -981,14 +1036,17 @@ export const useLyricsPhysics = ({
 
       if (Math.abs(currentScroll - limit) > 0.01) {
         scrollState.current.mode = "rebound";
+        modeRef.current = "rebound";
         scrollState.current.touchVelocity = 0;
         scrollState.current.targetScrollY = limit;
         system.setTarget("scrollY", limit, REBOUND_SPRING);
       } else if (Math.abs(vel) >= MIN_SCROLL_VELOCITY) {
         scrollState.current.mode = "momentum";
+        modeRef.current = "momentum";
         scrollState.current.touchVelocity = vel;
       } else {
         scrollState.current.mode = "manual";
+        modeRef.current = "manual";
         scrollState.current.touchVelocity = 0;
       }
 
@@ -1011,6 +1069,7 @@ export const useLyricsPhysics = ({
           : system.getCurrent("scrollY");
       const manualTarget = clampScrollValue(base + delta, false);
       scrollState.current.mode = "wheel";
+      modeRef.current = "wheel";
       scrollState.current.isDragging = false;
       scrollState.current.targetScrollY = manualTarget;
       scrollState.current.touchVelocity = 0;
@@ -1026,6 +1085,7 @@ export const useLyricsPhysics = ({
     anchorRef,
     handlers,
     linesState,
+    modeRef,
     updatePhysics,
   };
 };

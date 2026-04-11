@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "./hooks/useToast";
 import { PlayState, Song } from "./types";
 import FluidBackground from "./components/FluidBackground";
@@ -22,10 +22,8 @@ const App: React.FC = () => {
   const player = usePlayer({
     isReady: playlist.isReady,
     queue: playlist.queue,
-    originalQueue: playlist.originalQueue,
     updateSongInQueue: playlist.updateSongInQueue,
     setQueue: playlist.setQueue,
-    setOriginalQueue: playlist.setOriginalQueue,
   });
 
   const {
@@ -73,6 +71,15 @@ const App: React.FC = () => {
     if (typeof window === "undefined") return 0;
     return window.innerWidth;
   });
+  const openPlaylist = useCallback(() => {
+    setShowPlaylist(true);
+  }, []);
+  const closePlaylist = useCallback(() => {
+    setShowPlaylist(false);
+  }, []);
+  const togglePlaylist = useCallback(() => {
+    setShowPlaylist((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -196,7 +203,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleImportUrl = async (input: string): Promise<boolean> => {
+  const handleImportUrl = useCallback(async (input: string): Promise<boolean> => {
     const trimmed = input.trim();
     if (!trimmed) return false;
     const wasEmpty = playlist.queue.length === 0;
@@ -213,9 +220,16 @@ const App: React.FC = () => {
       return true;
     }
     return false;
-  };
+  }, [
+    dict.app.importFail,
+    dict.app.importOk,
+    handlePlaylistAddition,
+    playlist.importFromUrl,
+    playlist.queue.length,
+    toast,
+  ]);
 
-  const handleImportAndPlay = (song: Song) => {
+  const handleImportAndPlay = useCallback((song: Song) => {
     // Check if song already exists in queue (by neteaseId for cloud songs, or by id)
     const existingIndex = playlist.queue.findIndex((s) => {
       if (song.isNetease && s.isNetease) {
@@ -231,11 +245,11 @@ const App: React.FC = () => {
       // Add and play atomically - no race conditions!
       addSongAndPlay(song);
     }
-  };
+  }, [addSongAndPlay, playIndex, playlist.queue]);
 
-  const handleAddToQueue = (song: Song) => {
+  const handleAddToQueue = useCallback((song: Song) => {
     playlist.addSongs([song]);
-  };
+  }, [playlist.addSongs]);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobileLayout) return;
@@ -309,7 +323,7 @@ const App: React.FC = () => {
           onPrev={playPrev}
           playMode={playMode}
           onToggleMode={toggleMode}
-          onTogglePlaylist={() => setShowPlaylist((prev) => !prev)}
+          onTogglePlaylist={openPlaylist}
           accentColor={accentColor}
           volume={volume}
           onVolumeChange={setVolume}
@@ -323,6 +337,19 @@ const App: React.FC = () => {
           setShowVolumePopup={setShowVolumePopup}
           showSettingsPopup={showSettingsPopup}
           setShowSettingsPopup={setShowSettingsPopup}
+          playlistPanel={
+            <PlaylistPanel
+              isOpen={showPlaylist}
+              onClose={closePlaylist}
+              queue={playlist.queue}
+              currentSongId={currentSong?.id}
+              onPlay={playIndex}
+              onImport={handleImportUrl}
+              onReorder={playlist.reorder}
+              onRemove={playlist.removeSongs}
+              accentColor={accentColor}
+            />
+          }
         />
       </div>
     </div>
@@ -382,7 +409,7 @@ const App: React.FC = () => {
         volume={volume}
         onVolumeChange={setVolume}
         onToggleMode={toggleMode}
-        onTogglePlaylist={() => setShowPlaylist((prev) => !prev)}
+        onTogglePlaylist={togglePlaylist}
         speed={player.speed}
         onSpeedChange={player.setSpeed}
         onToggleVolumeDialog={() => setShowVolumePopup((prev) => !prev)}
@@ -477,18 +504,6 @@ const App: React.FC = () => {
           {lyricsSection}
         </div>
       )}
-      {/* Playlist Sidebar/Drawer Overlay */}
-      <PlaylistPanel
-        isOpen={showPlaylist}
-        onClose={() => setShowPlaylist(false)}
-        queue={playlist.queue}
-        currentSongId={currentSong?.id}
-        onPlay={playIndex}
-        onImport={handleImportUrl}
-        onReorder={playlist.reorder}
-        onRemove={playlist.removeSongs}
-        accentColor={accentColor}
-      />
     </div>
   );
 };

@@ -314,15 +314,34 @@ const lineEndOf = (line: LyricLine): number => {
 
 const CJK_SCRIPT_REGEX =
   /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u;
+const PUNCT_REGEX = /^[^\p{L}\p{N}]+$/u;
+const AFFIX_LIMIT = 3;
+const WORD_LIMIT = 8;
 
 const hasCjkScript = (text: string): boolean => {
   return CJK_SCRIPT_REGEX.test(text);
 };
 
+const countOf = (text: string): number => {
+  return Array.from(text.trim()).length;
+};
+
 const canMergeWords = (prev: LyricWord, word: LyricWord): boolean => {
   if (/\s$/.test(prev.text) || /^\s/.test(word.text)) return false;
   if (hasCjkScript(prev.text) || hasCjkScript(word.text)) return false;
-  return true;
+
+  const left = prev.text.trim();
+  const right = word.text.trim();
+
+  if (!left || !right) return false;
+  if (/\s/.test(left) || /\s/.test(right)) return false;
+  if (PUNCT_REGEX.test(left) || PUNCT_REGEX.test(right)) return true;
+
+  const leftCount = countOf(left);
+  const rightCount = countOf(right);
+
+  if (leftCount + rightCount > WORD_LIMIT) return false;
+  return Math.min(leftCount, rightCount) <= AFFIX_LIMIT;
 };
 
 const mergeWords = (words: LyricWord[]): LyricWord[] => {
