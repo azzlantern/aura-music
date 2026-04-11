@@ -327,9 +327,8 @@ export const parsePlaybackSnapshot = (raw: string | null): PlaybackSnapshot => {
 
   try {
     const value = JSON.parse(raw) as Partial<PlaybackSnapshot>;
-    const playMode = MODES.includes(value.playMode as PlayMode)
-      ? (value.playMode as PlayMode)
-      : PlayMode.LOOP_ALL;
+    // Always default to LOOP_ALL (sequential) instead of restoring previous mode
+    const playMode = PlayMode.LOOP_ALL;
 
     return {
       songId: typeof value.songId === "string" && value.songId.trim()
