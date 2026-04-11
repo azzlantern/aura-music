@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from "react";
-import Marquee from "./Marquee";
 import { useSpring, animated, useTransition, to } from "@react-spring/web";
 import { formatTime } from "../services/utils";
 import { useI18n } from "../hooks/useI18n";
@@ -52,6 +51,7 @@ interface ControlsProps {
   showSettingsPopup: boolean;
   setShowSettingsPopup: (show: boolean) => void;
   isBuffering: boolean;
+  playlistPanel?: React.ReactNode;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -82,6 +82,7 @@ const Controls: React.FC<ControlsProps> = ({
   showSettingsPopup,
   setShowSettingsPopup,
   isBuffering,
+  playlistPanel,
 }) => {
   const { dict } = useI18n();
   const volumeContainerRef = useRef<HTMLDivElement>(null);
@@ -430,20 +431,41 @@ const Controls: React.FC<ControlsProps> = ({
         )}
       </animated.div>
 
-
       {/* Song Info */}
-      <div className="text-center mb-1 px-4 select-text cursor-text flex flex-col items-center w-full z-10">
-        <div className="w-full max-w-[320px] min-h-[2.25rem] mb-1 flex items-center justify-center">
-          <h2 className="text-2xl font-bold tracking-tight drop-shadow-md text-balance leading-tight break-words py-1">
+      <div className="w-full flex items-center justify-between mb-8 px-1">
+        <div className="flex flex-col items-start overflow-hidden pr-4 max-w-[85%] select-text">
+          <h2 className="text-[1.4rem] leading-tight font-bold tracking-tight drop-shadow-md truncate text-left w-full text-white select-text">
             {title}
           </h2>
+          <p className="text-white/60 text-[1.1rem] leading-tight font-medium truncate text-left w-full mt-0.5 select-text">
+            {artist}
+          </p>
         </div>
-        <div className="w-full max-w-[280px] h-7 flex items-center justify-center overflow-hidden">
-          <Marquee
-            text={artist}
-            className="text-white/60 text-lg font-medium"
-            speed={30}
-          />
+        <div className="relative" ref={settingsContainerRef}>
+          <button
+            onClick={() => setShowSettingsPopup(!showSettingsPopup)}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all outline-none flex-shrink-0"
+            title={dict.controls.settings}
+          >
+            <div className="flex gap-[3px]">
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+              <div className="w-1 h-1 bg-white rounded-full opacity-90"></div>
+            </div>
+          </button>
+
+          {/* Settings Popup */}
+          {settingsTransitions((style, item) =>
+            item ? (
+              <SettingsPopup
+                style={style}
+                speed={speed}
+                preservesPitch={preservesPitch}
+                onTogglePreservesPitch={onTogglePreservesPitch}
+                onSpeedChange={onSpeedChange}
+              />
+            ) : null
+          )}
         </div>
       </div>
 
@@ -478,7 +500,7 @@ const Controls: React.FC<ControlsProps> = ({
             value={displayTime}
             onPointerDown={startSeek}
             onInput={(e) => {
-              const time = parseFloat((e.target as HTMLInputElement).value);
+              const time = parseFloat(e.target.value);
               dragSeek(time);
             }}
             onChange={(e) => {
@@ -553,6 +575,7 @@ const Controls: React.FC<ControlsProps> = ({
           >
             <QueueIcon className="w-6 h-6 fill-current" />
           </button>
+          {playlistPanel}
         </div>
       </div>
 

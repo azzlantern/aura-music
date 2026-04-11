@@ -728,7 +728,7 @@ const PlaylistPanel = React.memo(({
 
                                     return (
                                         <div
-                                            key={song.id}
+                                            key={`${song.id}-${index}`}
                                             data-song-row={song.id}
                                              onPointerDown={(e) => handlePress(e, song, index)}
                                             onContextMenu={(e) => {

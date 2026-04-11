@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { publishAudioLevel } from "@/services/audioLevelBridge";
 import audioProcessorUrl from "./AudioProcessor.ts?worker&url";
 
@@ -20,6 +20,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ audioRef, isPlaying }) => {
     const workerRef = useRef<Worker | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+    const [canvasKey, setCanvasKey] = useState(0);
 
     // Effect 1: Audio Context and Worklet Initialization
     useEffect(() => {
@@ -116,6 +117,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ audioRef, isPlaying }) => {
             return;
         }
 
+        if (canvasEl.dataset.offscreenTransferred === "true") {
+            setCanvasKey(prev => prev + 1);
+            return;
+        }
+
         try {
             const worker = new Worker(new URL("./VisualizerWorker.ts", import.meta.url), {
                 type: "module"
@@ -127,6 +133,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ audioRef, isPlaying }) => {
             canvasEl.height = 80 * dpr;
 
             const offscreen = canvasEl.transferControlToOffscreen();
+            canvasEl.dataset.offscreenTransferred = "true";
 
             const channel = new MessageChannel();
 
@@ -174,6 +181,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ audioRef, isPlaying }) => {
 
     return (
         <canvas
+            key={`visualizer-${canvasKey}`}
             ref={canvasRef}
             className="w-full h-10 transition-opacity duration-500"
         />

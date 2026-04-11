@@ -87,6 +87,7 @@ export class WebWorkerBackgroundRender extends BaseBackgroundRender {
       const response = await fetch(url);
       const blob = await response.blob();
       const bitmap = await createImageBitmap(blob);
+      if (!this.worker) return;
       const command: WorkerCommand = { type: "coverImage", imageData: bitmap };
       this.worker.postMessage(command, [bitmap]);
     } catch (error) {
