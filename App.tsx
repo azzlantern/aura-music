@@ -142,17 +142,15 @@ const App: React.FC = () => {
 
   // 自动加载默认歌单 - 只在初始化时加载一次
   useEffect(() => {
-    let isLoadingRef = false;
+    if (!playlist.isReady) return;
 
     const loadDefaultPlaylist = async () => {
-      // 避免重复加载
-      if (isLoadingRef) return;
-      isLoadingRef = true;
-
       // 检查配置是否启用自动加载
       if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
 
-      // 检查是否已经有歌曲在队列中，避免重复加载
+      // 等待 playlist 从 IndexedDB 恢复完毕
+      // 如果恢复后队列已有歌曲（playlist.queue.length > 0），说明之前已加载过，不再重复加载
+      // 只有队列为空时才自动加载
       if (playlist.queue.length > 0) return;
 
       try {
@@ -160,9 +158,6 @@ const App: React.FC = () => {
         if (result.success && result.songs.length > 0) {
           console.log(`自动加载歌单成功：${result.songs.length} 首歌曲`);
           toast.success(`已自动加载歌单：${result.songs.length} 首歌曲`);
-          // 注意：此时不要立即调用 player.handlePlaylistAddition，
-          // 因为闭包中的 player可能还是旧的（originalQueue 为空）。
-          // 我们改为在下方监听 playlist.queue 的变化来触发播放。
         } else {
           console.warn("自动加载歌单失败:", result.message);
         }
@@ -174,7 +169,7 @@ const App: React.FC = () => {
     // 延迟一点时间确保所有组件都已初始化
     const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
     return () => clearTimeout(timer);
-  }, []); // 空依赖数组，只运行一次
+  }, [playlist.isReady, playlist.queue.length]); // 添加 playlist.queue.length 依赖以确保判断准确
 
   // 监听队列变化，处理初始加载后的自动播放
   const hasAutoPlayedRef = useRef(false);
