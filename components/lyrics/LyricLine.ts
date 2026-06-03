@@ -46,8 +46,14 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const easeOutPow = (value: number, power: number) =>
   1 - Math.pow(1 - clamp01(value), power);
 const revealShapeOf = (value: number, visible: boolean) => ({
-  x: Math.max(0.001, visible ? easeOutPow(value, 2.15) : Math.pow(clamp01(value), 1.45)),
-  y: Math.max(0.001, visible ? easeOutPow(value, 1.45) : Math.pow(clamp01(value), 1.08)),
+  x: Math.max(
+    0.001,
+    visible ? easeOutPow(value, 2.15) : Math.pow(clamp01(value), 1.45),
+  ),
+  y: Math.max(
+    0.001,
+    visible ? easeOutPow(value, 1.45) : Math.pow(clamp01(value), 1.08),
+  ),
 });
 const smoothStep = (start: number, end: number, value: number) => {
   if (start === end) return value >= end ? 1 : 0;
@@ -225,7 +231,7 @@ export const shouldEmphasizeWord = (word: TimedWord) => {
 
   if (isCjk(text) && charCount > 1) return false;
 
-  return charCount > 1 && charCount <= EMPHASIS_MAX_CHARS;
+  return (charCount > 1 || isCjk(text)) && charCount <= EMPHASIS_MAX_CHARS;
 };
 
 const isTrailingWord = (words: TimedWord[], index: number) => {
@@ -238,7 +244,11 @@ const isTrailingWord = (words: TimedWord[], index: number) => {
   return index === words.length - 1;
 };
 
-const getEmphasisProfile = (word: TimedWord, words: TimedWord[], index: number) => {
+const getEmphasisProfile = (
+  word: TimedWord,
+  words: TimedWord[],
+  index: number,
+) => {
   let span = Math.max(EMPHASIS_MIN_DURATION, word.endTime - word.startTime);
   let zoom = span / 2;
   zoom = zoom > 1 ? Math.sqrt(zoom) : zoom ** 3;
@@ -255,8 +265,7 @@ const getEmphasisProfile = (word: TimedWord, words: TimedWord[], index: number) 
   }
 
   const glyphs = Array.from(word.text.trim()).length;
-  const anchorCount =
-    isCjk(word.text) && glyphs > 1 ? 1 : Math.max(1, glyphs);
+  const anchorCount = isCjk(word.text) && glyphs > 1 ? 1 : Math.max(1, glyphs);
 
   return {
     span,
@@ -706,7 +715,10 @@ export class LyricLine implements ILyricLine {
       this.layout.translationLines!.forEach((lineText) => {
         const x =
           this.lyricLine.align === "right"
-            ? Math.max(0, this.layout!.textWidth - this.ctx.measureText(lineText).width)
+            ? Math.max(
+                0,
+                this.layout!.textWidth - this.ctx.measureText(lineText).width,
+              )
             : 0;
         this.ctx.fillText(lineText, x, y);
         y += transHeight;
@@ -1138,12 +1150,10 @@ export class LyricLine implements ILyricLine {
       : this.isMobile
         ? 18
         : 24;
-    const bottom = this.lyricLine.isBackground
-      ? this.isMobile
-        ? 4
-        : 6
-      : top;
-    const gap = mainHeight * (this.lyricLine.isBackground ? 0.18 : WRAPPED_LINE_GAP_RATIO);
+    const bottom = this.lyricLine.isBackground ? (this.isMobile ? 4 : 6) : top;
+    const gap =
+      mainHeight *
+      (this.lyricLine.isBackground ? 0.18 : WRAPPED_LINE_GAP_RATIO);
     const paddingX = this.isMobile ? 24 : 56;
     // Duet lines get reduced max width (~65% of container)
     const duetRatio = this.lyricLine.isDuet ? (this.isMobile ? 0.88 : 0.78) : 1;
@@ -1331,10 +1341,13 @@ export class LyricLine implements ILyricLine {
 
   public getCurrentHeight(currentTime?: number) {
     if (this.lyricLine.isBackground) {
-      return this._height * revealShapeOf(
-        this.getBackgroundShow(currentTime),
-        this.hasBackgroundWindow(currentTime),
-      ).y;
+      return (
+        this._height *
+        revealShapeOf(
+          this.getBackgroundShow(currentTime),
+          this.hasBackgroundWindow(currentTime),
+        ).y
+      );
     }
     return this._height;
   }
@@ -1347,11 +1360,18 @@ export class LyricLine implements ILyricLine {
   }
 
   public getFocusOffset() {
-    if (!this.layout || this.layout.words.length === 0 || this.mainHeight <= 0) {
+    if (
+      !this.layout ||
+      this.layout.words.length === 0 ||
+      this.mainHeight <= 0
+    ) {
       return this._height * 0.5;
     }
 
-    const top = this.layout.words.reduce((min, word) => Math.min(min, word.y), Infinity);
+    const top = this.layout.words.reduce(
+      (min, word) => Math.min(min, word.y),
+      Infinity,
+    );
     if (!Number.isFinite(top)) {
       return this._height * 0.5;
     }
