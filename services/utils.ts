@@ -174,6 +174,14 @@ export const parseAudioMetadata = (
   });
 };
 
+export type ExtractedColors = string[] & {
+  themeColor?: string;
+};
+
+const clamp = (value: number, min: number, max: number) => {
+  return Math.max(min, Math.min(max, value));
+};
+
 const colorLum = (rgb: number[]) => {
   return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
 };
@@ -189,6 +197,79 @@ const colorDist = (a: number[], b: number[]) => {
   return dr * dr + dg * dg + db * db;
 };
 
+const toCssRgb = (rgb: number[]) => {
+  return `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(
+    rgb[2],
+  )})`;
+};
+
+const parseCssRgb = (color: string): number[] | null => {
+  const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!match) return null;
+
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+};
+
+const rgbToHsl = (rgb: number[]) => {
+  const r = rgb[0] / 255;
+  const g = rgb[1] / 255;
+  const b = rgb[2] / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+
+  if (max === min) {
+    return { hue: 0, sat: 0, light };
+  }
+
+  const delta = max - min;
+  const sat =
+    light > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  const hue =
+    max === r
+      ? (g - b) / delta + (g < b ? 6 : 0)
+      : max === g
+        ? (b - r) / delta + 2
+        : (r - g) / delta + 4;
+
+  return { hue: hue / 6, sat, light };
+};
+
+const hslToRgb = (hue: number, sat: number, light: number) => {
+  if (sat === 0) {
+    const value = Math.round(light * 255);
+    return [value, value, value];
+  }
+
+  const toRgb = (p: number, q: number, t: number) => {
+    let next = t;
+    if (next < 0) next += 1;
+    if (next > 1) next -= 1;
+    if (next < 1 / 6) return p + (q - p) * 6 * next;
+    if (next < 1 / 2) return q;
+    if (next < 2 / 3) return p + (q - p) * (2 / 3 - next) * 6;
+    return p;
+  };
+
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+
+  return [
+    Math.round(toRgb(p, q, hue + 1 / 3) * 255),
+    Math.round(toRgb(p, q, hue) * 255),
+    Math.round(toRgb(p, q, hue - 1 / 3) * 255),
+  ];
+};
+
+const safeThemeRgb = (rgb: number[]) => {
+  const hsl = rgbToHsl(rgb);
+  return hslToRgb(
+    hsl.hue,
+    clamp(hsl.sat, 0.24, 0.58),
+    clamp(hsl.light, 0.24, 0.42),
+  );
+};
+
 const colorScore = (rgb: number[]) => {
   const lum = colorLum(rgb);
   const sat = colorSat(rgb);
@@ -196,10 +277,100 @@ const colorScore = (rgb: number[]) => {
   return sat * 0.7 + balance * 90;
 };
 
-export const extractColors = async (imageSrc: string): Promise<string[]> => {
+const themeScore = (rgb: number[], index: number) => {
+  const lum = colorLum(rgb);
+  const hsl = rgbToHsl(rgb);
+  if (lum < 24 || lum > 238) return -Infinity;
+  if (hsl.sat < 0.08 && (hsl.light < 0.18 || hsl.light > 0.82)) {
+    return -Infinity;
+  }
+
+  const prevalence = Math.max(0, 20 - index) * 14;
+  const usable = 1 - Math.min(1, Math.abs(hsl.light - 0.48) / 0.48);
+  const colorfulness = Math.min(1, hsl.sat * 2.4);
+
+  return prevalence + usable * 80 + colorfulness * 48;
+};
+
+const bucketRgb = (rgb: number[]) => {
+  return rgb.map((value) => Math.round(value / 24) * 24);
+};
+
+const backgroundColorOf = (img: HTMLImageElement) => {
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(img, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data;
+  const buckets = new Map<
+    string,
+    { rgb: number[]; count: number; score: number }
+  >();
+
+  for (let y = 0; y < size; y += 2) {
+    for (let x = 0; x < size; x += 2) {
+      const edge = x < 12 || y < 12 || x >= size - 12 || y >= size - 12;
+      const outer = x < 4 || y < 4 || x >= size - 4 || y >= size - 4;
+      if (!edge && (x + y) % 8 !== 0) continue;
+
+      const idx = (y * size + x) * 4;
+      const rgb = [data[idx], data[idx + 1], data[idx + 2]];
+      const lum = colorLum(rgb);
+      if (lum < 18 || lum > 245) continue;
+
+      const key = bucketRgb(rgb).join(",");
+      const bucket = buckets.get(key) ?? { rgb: [0, 0, 0], count: 0, score: 0 };
+      const weight = outer ? 4 : edge ? 2 : 1;
+      bucket.rgb[0] += rgb[0] * weight;
+      bucket.rgb[1] += rgb[1] * weight;
+      bucket.rgb[2] += rgb[2] * weight;
+      bucket.count += weight;
+      bucket.score += weight;
+      buckets.set(key, bucket);
+    }
+  }
+
+  const picked = [...buckets.values()]
+    .filter((bucket) => bucket.count >= 4)
+    .map((bucket) => {
+      const rgb = bucket.rgb.map((value) => value / bucket.count);
+      const hsl = rgbToHsl(rgb);
+      const usable = 1 - Math.min(1, Math.abs(hsl.light - 0.5) / 0.5);
+      return {
+        rgb,
+        score: bucket.score + usable * 12 + Math.min(1, hsl.sat * 2) * 10,
+      };
+    })
+    .sort((a, b) => b.score - a.score)[0];
+
+  return picked?.rgb ?? null;
+};
+
+export const getThemeColor = (colors?: string[], fallback = "#16a34a") => {
+  if (!colors || colors.length === 0) return fallback;
+
+  const ranked = colors
+    .map((color, index) => ({ color, index, rgb: parseCssRgb(color) }))
+    .filter((item): item is { color: string; index: number; rgb: number[] } => {
+      return item.rgb !== null;
+    })
+    .sort((a, b) => themeScore(b.rgb, b.index) - themeScore(a.rgb, a.index));
+
+  if (ranked.length === 0) return fallback;
+
+  return toCssRgb(safeThemeRgb(ranked[0].rgb));
+};
+
+export const extractColors = async (
+  imageSrc: string,
+): Promise<ExtractedColors> => {
   try {
     const img = await loadImageElementWithCache(imageSrc);
-    const colors = await getPalette(img, { colorCount: 20 });
+    const colors = await getPalette(img, { colorCount: 24 });
     const palette = colors?.map((item) => item.array()) ?? [];
 
     if (!palette || palette.length === 0) {
@@ -217,8 +388,10 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
 
     const candidates = filtered.length >= 6 ? filtered : palette;
 
-    // Sort by vibrance and contrast score
-    const ranked = candidates.slice().sort((a: number[], b: number[]) => colorScore(b) - colorScore(a));
+    // Sort by vibrance and contrast score for UI accent/background effects.
+    const ranked = candidates
+      .slice()
+      .sort((a: number[], b: number[]) => colorScore(b) - colorScore(a));
 
     const picked: number[][] = [];
     // Pass 1: Strict distance for max diversity
@@ -246,10 +419,18 @@ export const extractColors = async (imageSrc: string): Promise<string[]> => {
       }
     }
 
-    console.log(picked);
+    const result = picked.slice(0, 10).map(toCssRgb) as ExtractedColors;
+    const theme =
+      backgroundColorOf(img) ??
+      palette
+        .map((rgb, index) => ({ rgb, index, score: themeScore(rgb, index) }))
+        .sort((a, b) => b.score - a.score)[0]?.rgb;
 
-    // Return the top ~10 diverse colors
-    return picked.slice(0, 10).map((c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+    if (theme) {
+      result.themeColor = toCssRgb(safeThemeRgb(theme));
+    }
+
+    return result;
   } catch (err) {
     console.warn("Color extraction failed", err);
     return [];

@@ -635,7 +635,9 @@ export const usePlayer = ({
       !currentSong ||
       !currentSong.isNetease ||
       !currentSong.coverUrl ||
-      (currentSong.colors && currentSong.colors.length > 0)
+      currentSong.themeColor &&
+      currentSong.colors &&
+      currentSong.colors.length > 0
     ) {
       return;
     }
@@ -643,7 +645,10 @@ export const usePlayer = ({
     extractColors(currentSong.coverUrl)
       .then((colors) => {
         if (colors.length > 0) {
-          updateSongInQueue(currentSong.id, { colors });
+          updateSongInQueue(currentSong.id, {
+            colors,
+            themeColor: colors.themeColor,
+          });
         }
       })
       .catch((err) => console.warn("Color extraction failed", err));

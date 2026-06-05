@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Song } from "../types";
+import type { ExtractedColors } from "../services/utils";
 import {
   deleteLocalFiles,
   hydrateLibrarySnapshot,
@@ -246,7 +247,8 @@ export const usePlaylist = () => {
         let title = basename;
         let artist = dict.playlist.unknownArtist;
         let coverUrl: string | undefined;
-        let colors: string[] | undefined;
+        let colors: ExtractedColors | undefined;
+        let themeColor: string | undefined;
         let lyrics: { time: number; text: string }[] = [];
 
         const nameParts = title.split("-");
@@ -262,6 +264,7 @@ export const usePlaylist = () => {
           if (metadata.picture) {
             coverUrl = metadata.picture;
             colors = await extractColors(coverUrl);
+            themeColor = colors.themeColor;
           }
 
           // Check for embedded lyrics first (highest priority)
@@ -327,6 +330,7 @@ export const usePlaylist = () => {
           coverUrl,
           lyrics,
           colors: colors && colors.length > 0 ? colors : undefined,
+          themeColor,
           needsLyricsMatch: lyrics.length === 0, // Flag for cloud matching
         });
       }

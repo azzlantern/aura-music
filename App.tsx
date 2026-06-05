@@ -8,11 +8,13 @@ import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
+import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
+import { getThemeColor } from "./services/utils";
 
 const App: React.FC = () => {
   const { toast } = useToast();
@@ -66,7 +68,7 @@ const App: React.FC = () => {
   const [dragOffsetX, setDragOffsetX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const mobileViewportRef = useRef<HTMLDivElement>(null);
-  const theme = currentSong?.colors?.[0] || "#16a34a";
+  const theme = currentSong?.themeColor || getThemeColor(currentSong?.colors);
   const [paneWidth, setPaneWidth] = useState(() => {
     if (typeof window === "undefined") return 0;
     return window.innerWidth;
@@ -388,6 +390,8 @@ const App: React.FC = () => {
         onPrev={playPrev}
         onSeek={handleSeek}
       />
+
+      <PwaUpdatePrompt />
 
       {/* Top Bar */}
       <TopBar

@@ -30,7 +30,8 @@ export interface Song {
   origin?: string;
   coverUrl?: string;
   lyrics?: LyricLine[];
-  colors?: string[]; // Array of dominant colors
+  colors?: string[]; // Array of dominant/accent colors
+  themeColor?: string; // Stable dominant color for PWA/browser chrome
   needsLyricsMatch?: boolean; // Flag indicating song needs cloud lyrics matching
   // Netease specific fields
   isNetease?: boolean;
