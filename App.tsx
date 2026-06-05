@@ -66,6 +66,7 @@ const App: React.FC = () => {
   const [dragOffsetX, setDragOffsetX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const mobileViewportRef = useRef<HTMLDivElement>(null);
+  const theme = currentSong?.colors?.[0] || "#16a34a";
   const [paneWidth, setPaneWidth] = useState(() => {
     if (typeof window === "undefined") return 0;
     return window.innerWidth;
@@ -85,6 +86,19 @@ const App: React.FC = () => {
       audioRef.current.volume = volume;
     }
   }, [volume, audioRef]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let meta = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]',
+    );
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
