@@ -312,6 +312,14 @@ const lineEndOf = (line: LyricLine): number => {
   return line.time;
 };
 
+const lineStartOf = (time: number, end: number, words: LyricWord[]): number => {
+  const first = words[0];
+  if (!first) return time;
+  if (first.startTime <= time) return time;
+  if (end > time && end >= first.startTime) return time;
+  return first.startTime;
+};
+
 const CJK_SCRIPT_REGEX =
   /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u;
 const PUNCT_REGEX = /^[^\p{L}\p{N}]+$/u;
@@ -565,13 +573,14 @@ const parseP = (item: any, rootMode?: Mode, scope: Scope = {}): Entry[] => {
   }
 
   if (hasMain) {
+    const mainTime = lineStartOf(time, pEnd, mainWords);
     const line: LyricLine = {
       key,
-      time,
+      time: mainTime,
       text: text || mainWords.map((word) => word.text).join(""),
     };
 
-    if (pEnd > time) line.endTime = pEnd;
+    if (pEnd > mainTime) line.endTime = pEnd;
 
     if (mode === "word" && mainWords.length > 0) {
       line.words = mainWords;

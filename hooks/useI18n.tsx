@@ -40,12 +40,10 @@ interface Dict {
     next: string;
     queue: string;
     speed: string;
-    tone: string;
-    vinylMode: string;
-    digital: string;
-    vinyl: string;
-    digitalShort: string;
-    vinylShort: string;
+    nightcore: string;
+    original: string;
+    nightcoreShort: string;
+    originalShort: string;
   };
   import: {
     title: string;
@@ -112,6 +110,15 @@ interface Dict {
   bg: {
     loading: string;
   };
+  pwa: {
+    updateTitle: string;
+    updateDesc: string;
+    updateAction: string;
+    later: string;
+    offlineTitle: string;
+    offlineDesc: string;
+    close: string;
+  };
 }
 
 export const dicts: Record<Lang, Dict> = {
@@ -147,12 +154,10 @@ export const dicts: Record<Lang, Dict> = {
       next: "Next",
       queue: "Queue",
       speed: "Speed",
-      tone: "Tone Preserved",
-      vinylMode: "Vinyl Mode",
-      digital: "Digital",
-      vinyl: "Vinyl",
-      digitalShort: "Dig",
-      vinylShort: "Vin",
+      nightcore: "Nightcore",
+      original: "Original",
+      nightcoreShort: "NC",
+      originalShort: "ORG",
     },
     import: {
       title: "Import Music",
@@ -220,6 +225,15 @@ export const dicts: Record<Lang, Dict> = {
     bg: {
       loading: "Loading layers...",
     },
+    pwa: {
+      updateTitle: "New version ready",
+      updateDesc: "Update Aura Music now to get the latest fixes without waiting for the browser cache.",
+      updateAction: "Update now",
+      later: "Later",
+      offlineTitle: "Ready offline",
+      offlineDesc: "Aura Music is cached and can keep opening without a connection.",
+      close: "Close",
+    },
   },
   zh: {
     app: {
@@ -253,12 +267,10 @@ export const dicts: Record<Lang, Dict> = {
       next: "下一首",
       queue: "队列",
       speed: "速度",
-      tone: "保留音调",
-      vinylMode: "黑胶模式",
-      digital: "数字",
-      vinyl: "黑胶",
-      digitalShort: "数",
-      vinylShort: "胶",
+      nightcore: "夜核",
+      original: "原调",
+      nightcoreShort: "夜核",
+      originalShort: "原调",
     },
     import: {
       title: "导入音乐",
@@ -325,6 +337,15 @@ export const dicts: Record<Lang, Dict> = {
     },
     bg: {
       loading: "背景层加载中...",
+    },
+    pwa: {
+      updateTitle: "新版本已准备好",
+      updateDesc: "立即更新 Aura Music，获取最新修复，不再等待浏览器缓存刷新。",
+      updateAction: "立即更新",
+      later: "稍后",
+      offlineTitle: "可离线使用",
+      offlineDesc: "Aura Music 已完成缓存，断网时也可以继续打开。",
+      close: "关闭",
     },
   },
 };

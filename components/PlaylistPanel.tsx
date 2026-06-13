@@ -9,6 +9,7 @@ import {
   QueueIcon,
   TrashIcon,
   SelectAllIcon,
+  RefreshIcon,
 } from "./Icons";
 import { useI18n } from "../hooks/useI18n";
 import { useKeyboardScope } from "../hooks/useKeyboardScope";
@@ -55,6 +56,7 @@ interface PlaylistPanelProps {
     currentSongId?: string;
     onPlay: (index: number) => void;
     onImport: (url: string) => Promise<boolean>;
+    onRefresh?: () => Promise<void>;
     onReorder: (ids: string[]) => void;
     onRemove: (ids: string[]) => void;
     accentColor: string;
@@ -162,6 +164,7 @@ const PlaylistPanel = React.memo(({
     currentSongId,
     onPlay,
     onImport,
+    onRefresh,
     onReorder,
     onRemove,
     accentColor
@@ -171,6 +174,7 @@ const PlaylistPanel = React.memo(({
     const [isEditing, setIsEditing] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [drag, setDrag] = useState<DragState | null>(null);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const panelRef = useRef<HTMLDivElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
@@ -180,6 +184,14 @@ const PlaylistPanel = React.memo(({
     const skipRef = useRef(false);
     const [scrollTop, setScrollTop] = useState(0);
     const [listHeight, setListHeight] = useState(0);
+
+    const filteredQueue = useMemo(() => {
+      if (!searchQuery.trim()) return queue;
+      const q = searchQuery.toLowerCase();
+      return queue.filter(
+        (s) => s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q),
+      );
+    }, [queue, searchQuery]);
 
     // ESC key support using keyboard scope
     useKeyboardScope(
@@ -205,6 +217,7 @@ const PlaylistPanel = React.memo(({
             if (!isOpen) {
                 setIsEditing(false);
                 setSelectedIds(new Set());
+                setSearchQuery("");
             }
         }
     });
@@ -270,10 +283,11 @@ const PlaylistPanel = React.memo(({
     };
 
     const handleSelectAll = () => {
-        if (selectedIds.size === queue.length) {
+        const ids = new Set(filteredQueue.map(song => song.id));
+        if (selectedIds.size === ids.size && [...ids].every(id => selectedIds.has(id))) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(queue.map(song => song.id)));
+            setSelectedIds(ids);
         }
     };
 
@@ -295,11 +309,11 @@ const PlaylistPanel = React.memo(({
     }, []);
 
     useEffect(() => {
-        if (!isOpen || isEditing || queue.length < 2) {
+        if (!isOpen || isEditing || searchQuery.trim() || queue.length < 2) {
             cancelPress();
             clearDrag();
         }
-    }, [cancelPress, clearDrag, isEditing, isOpen, queue.length]);
+    }, [cancelPress, clearDrag, isEditing, isOpen, queue.length, searchQuery]);
 
     useEffect(() => {
         return () => {
@@ -310,7 +324,7 @@ const PlaylistPanel = React.memo(({
 
     const getIndex = useCallback((y: number, lift: number, h: number) => {
         const list = listRef.current;
-        if (!list || queue.length === 0) {
+        if (!list || filteredQueue.length === 0) {
             return 0;
         }
 
@@ -318,9 +332,9 @@ const PlaylistPanel = React.memo(({
         const raw = y - rect.top + list.scrollTop - lift + (h / 2);
         return Math.max(
             0,
-            Math.min(queue.length - 1, Math.floor(raw / ITEM_HEIGHT)),
+            Math.min(filteredQueue.length - 1, Math.floor(raw / ITEM_HEIGHT)),
         );
-    }, [queue.length]);
+    }, [filteredQueue.length]);
 
     const syncGhost = useCallback((state: DragState | null) => {
         if (!state || !ghostRef.current) {
@@ -387,7 +401,7 @@ const PlaylistPanel = React.memo(({
         index: number,
         instant = false,
     ) => {
-        if (isEditing || queue.length < 2 || !listRef.current || pressRef.current || dragRef.current) {
+        if (isEditing || searchQuery.trim() || queue.length < 2 || !listRef.current || pressRef.current || dragRef.current) {
             return;
         }
         if (e.pointerType === "mouse" && e.button !== 0) {
@@ -510,37 +524,37 @@ const PlaylistPanel = React.memo(({
     };
 
     const { virtualItems, totalHeight } = useMemo(() => {
-        const totalHeight = queue.length * ITEM_HEIGHT;
-        if (queue.length === 0) {
-            return {
-                virtualItems: [],
-                totalHeight,
-            };
-        }
-
-        const height = listHeight || 600;
-
-        let startIndex = Math.floor(scrollTop / ITEM_HEIGHT);
-        let endIndex = Math.ceil((scrollTop + height) / ITEM_HEIGHT);
-
-        startIndex = Math.max(0, startIndex - OVERSCAN);
-        endIndex = Math.min(queue.length, endIndex + OVERSCAN);
-
-        const virtualItems: RowState[] = [];
-        for (let view = startIndex; view < endIndex; view += 1) {
-            const index = drag ? sourceAt(view, drag) : view;
-            const song = queue[index];
-            if (!song) {
-                continue;
-            }
-            virtualItems.push({ song, index, view });
-        }
-
+      const totalHeight = filteredQueue.length * ITEM_HEIGHT;
+      if (filteredQueue.length === 0) {
         return {
-            virtualItems,
-            totalHeight,
+          virtualItems: [],
+          totalHeight,
         };
-    }, [drag, listHeight, queue, scrollTop]);
+      }
+
+      const height = listHeight || 600;
+
+      let startIndex = Math.floor(scrollTop / ITEM_HEIGHT);
+      let endIndex = Math.ceil((scrollTop + height) / ITEM_HEIGHT);
+
+      startIndex = Math.max(0, startIndex - OVERSCAN);
+      endIndex = Math.min(filteredQueue.length, endIndex + OVERSCAN);
+
+      const virtualItems: RowState[] = [];
+      for (let view = startIndex; view < endIndex; view += 1) {
+        const index = drag ? sourceAt(view, drag) : view;
+        const song = filteredQueue[index];
+        if (!song) {
+          continue;
+        }
+        virtualItems.push({ song, index, view });
+      }
+
+      return {
+        virtualItems,
+        totalHeight,
+      };
+    }, [drag, filteredQueue, listHeight, scrollTop]);
 
     useEffect(() => {
         if (!drag) {
@@ -654,7 +668,9 @@ const PlaylistPanel = React.memo(({
                         <div className="flex flex-col">
                             <h3 className="text-white text-lg font-bold leading-none tracking-tight">{dict.list.playingNext}</h3>
                             <span className="text-white/40 text-xs font-medium mt-1">
-                                {dict.list.songs(queue.length)}
+                                {searchQuery.trim()
+                                    ? `${filteredQueue.length} / ${queue.length}`
+                                    : dict.list.songs(queue.length)}
                             </span>
                         </div>
 
@@ -694,6 +710,17 @@ const PlaylistPanel = React.memo(({
                                     >
                                         <PlusIcon className="w-5 h-5" />
                                     </button>
+                                    {onRefresh && (
+                                        <button
+                                            onClick={async () => {
+                                                await onRefresh();
+                                            }}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center transition-all text-white/50 hover:text-white hover:bg-white/10"
+                                            title="刷新歌单"
+                                        >
+                                            <RefreshIcon className="w-5 h-5" />
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setIsEditing(true)}
                                         className="w-8 h-8 rounded-full flex items-center justify-center transition-all text-white/50 hover:text-white hover:bg-white/10"
@@ -706,15 +733,26 @@ const PlaylistPanel = React.memo(({
                         </div>
                     </div>
 
+                    {/* Search Input */}
+                    <div className="px-4 pb-2 shrink-0">
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="搜索歌曲..."
+                            className="w-full px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-white/90 text-sm placeholder:text-white/30 outline-none focus:border-white/20 transition-colors"
+                        />
+                    </div>
+
                     {/* Scrollable List with Virtualization */}
                     <div
                         ref={listRef}
                         onScroll={handleScroll}
                         className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-2 relative"
                     >
-                        {queue.length === 0 ? (
+                        {filteredQueue.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-32 text-white/30 space-y-2">
-                                <p className="text-xs font-medium">{dict.list.empty}</p>
+                                <p className="text-xs font-medium">{searchQuery.trim() ? "未找到匹配歌曲" : dict.list.empty}</p>
                             </div>
                         ) : (
                             <div style={{ height: `${totalHeight}px`, position: 'relative' }}>

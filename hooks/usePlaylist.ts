@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Song } from "../types";
+import type { ExtractedColors } from "../services/utils";
 import {
   deleteLocalFiles,
   hydrateLibrarySnapshot,
@@ -67,7 +68,9 @@ export const usePlaylist = () => {
   const { dict } = useI18n();
   const [queue, setQueue] = useState<Song[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [importingCount, setImportingCount] = useState(0);
   const urlsRef = useRef(new Map<string, string>());
+  const lastImportUrlRef = useRef<string | null>(null);
 
   const storeUrl = useCallback((id: string, url: string) => {
     const prev = urlsRef.current.get(id);
@@ -246,7 +249,8 @@ export const usePlaylist = () => {
         let title = basename;
         let artist = dict.playlist.unknownArtist;
         let coverUrl: string | undefined;
-        let colors: string[] | undefined;
+        let colors: ExtractedColors | undefined;
+        let themeColor: string | undefined;
         let lyrics: { time: number; text: string }[] = [];
 
         const nameParts = title.split("-");
@@ -262,6 +266,7 @@ export const usePlaylist = () => {
           if (metadata.picture) {
             coverUrl = metadata.picture;
             colors = await extractColors(coverUrl);
+            themeColor = colors.themeColor;
           }
 
           // Check for embedded lyrics first (highest priority)
@@ -327,6 +332,7 @@ export const usePlaylist = () => {
           coverUrl,
           lyrics,
           colors: colors && colors.length > 0 ? colors : undefined,
+          themeColor,
           needsLyricsMatch: lyrics.length === 0, // Flag for cloud matching
         });
       }
@@ -365,10 +371,16 @@ export const usePlaylist = () => {
         };
       }
 
+      lastImportUrlRef.current = input;
+
       const newSongs: Song[] = [];
       try {
         if (parsed.type === "playlist") {
-          const songs = await fetchNeteasePlaylist(parsed.id);
+          setImportingCount(0);
+          const songs = await fetchNeteasePlaylist(parsed.id, (loaded) => {
+            setImportingCount(loaded);
+          });
+          setImportingCount(0);
           songs.forEach((song) => {
             const origin = getNeteaseAudioUrl(song.id);
             newSongs.push({
@@ -397,6 +409,7 @@ export const usePlaylist = () => {
           }
         }
       } catch (err) {
+        setImportingCount(0);
         console.error("Failed to fetch Netease music", err);
         return {
           success: false,
@@ -419,15 +432,63 @@ export const usePlaylist = () => {
     [appendSongs, dict.app.importFail, dict.playlist.invalidUrl],
   );
 
+  const refreshFromUrl = useCallback(
+    async (url?: string): Promise<{ added: number; total: number }> => {
+      const target = url ?? lastImportUrlRef.current;
+      if (!target) return { added: 0, total: 0 };
+
+      const parsed = parseNeteaseLink(target);
+      if (!parsed || parsed.type !== "playlist") return { added: 0, total: 0 };
+
+      const existingIds = new Set(
+        queue.filter((s) => s.neteaseId).map((s) => s.neteaseId),
+      );
+
+      setImportingCount(0);
+      try {
+        const tracks = await fetchNeteasePlaylist(parsed.id, (loaded) => {
+          setImportingCount(loaded);
+        });
+        setImportingCount(0);
+
+        const newTracks = tracks.filter((t) => !existingIds.has(t.id));
+        if (newTracks.length === 0) return { added: 0, total: tracks.length };
+
+        const newSongs: Song[] = newTracks.map((song) => {
+          const origin = getNeteaseAudioUrl(song.id);
+          return {
+            ...song,
+            fileUrl: origin,
+            source: "remote" as const,
+            origin,
+            lyrics: [],
+            colors: [],
+            needsLyricsMatch: true,
+          };
+        });
+
+        appendSongs(newSongs);
+        return { added: newSongs.length, total: tracks.length };
+      } catch (err) {
+        setImportingCount(0);
+        console.error("Failed to refresh playlist", err);
+        return { added: 0, total: 0 };
+      }
+    },
+    [appendSongs, queue],
+  );
+
   return {
     queue,
     isReady,
+    importingCount,
     updateSongInQueue,
     addSongs,
     reorder,
     removeSongs,
     addLocalFiles,
     importFromUrl,
+    refreshFromUrl,
     setQueue,
   };
 };

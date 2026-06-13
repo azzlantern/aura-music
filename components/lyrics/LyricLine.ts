@@ -21,13 +21,16 @@ const EMPHASIS_TRAIL = 1.2;
 const EMPHASIS_SPLIT = 0.5;
 const BG_LEAD = 0.9;
 const BG_TRAIL = 0.45;
-const BG_FONT_SCALE = 0.76;
+const BG_FONT_SCALE = 0.5;
 export const BG_ACTIVE_ALPHA = 0.68;
 export const BG_PAST_ALPHA = BG_ACTIVE_ALPHA;
 const BG_FUTURE_ALPHA = 0.42;
 const BG_IDLE_ALPHA = 0.24;
 const BG_TRANS_ALPHA = 0.74;
 const TRANS_ALPHA = 0.8;
+// Time constant for easing a line's colour from lit (white) back to idle when
+// it stops being active, so the brightness recovers instead of snapping.
+const ACTIVE_FADE_TAU = 0.16;
 const BG_SHOW_SPRING: SpringConfig = {
   mass: 1.42,
   stiffness: 56,
@@ -46,8 +49,14 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const easeOutPow = (value: number, power: number) =>
   1 - Math.pow(1 - clamp01(value), power);
 const revealShapeOf = (value: number, visible: boolean) => ({
-  x: Math.max(0.001, visible ? easeOutPow(value, 2.15) : Math.pow(clamp01(value), 1.45)),
-  y: Math.max(0.001, visible ? easeOutPow(value, 1.45) : Math.pow(clamp01(value), 1.08)),
+  x: Math.max(
+    0.001,
+    visible ? easeOutPow(value, 2.15) : Math.pow(clamp01(value), 1.45),
+  ),
+  y: Math.max(
+    0.001,
+    visible ? easeOutPow(value, 1.45) : Math.pow(clamp01(value), 1.08),
+  ),
 });
 const smoothStep = (start: number, end: number, value: number) => {
   if (start === end) return value >= end ? 1 : 0;
@@ -139,8 +148,10 @@ export interface LineLayout {
   fullText: string;
   translation?: string;
   translationLines?: string[];
+  romanizationLines?: string[];
   textWidth: number;
   translationWidth?: number;
+  romanizationWidth?: number;
 }
 
 const HAN_REGEX = /\p{Script=Han}/u;
@@ -225,7 +236,7 @@ export const shouldEmphasizeWord = (word: TimedWord) => {
 
   if (isCjk(text) && charCount > 1) return false;
 
-  return charCount > 1 && charCount <= EMPHASIS_MAX_CHARS;
+  return (charCount > 1 || isCjk(text)) && charCount <= EMPHASIS_MAX_CHARS;
 };
 
 const isTrailingWord = (words: TimedWord[], index: number) => {
@@ -238,7 +249,11 @@ const isTrailingWord = (words: TimedWord[], index: number) => {
   return index === words.length - 1;
 };
 
-const getEmphasisProfile = (word: TimedWord, words: TimedWord[], index: number) => {
+const getEmphasisProfile = (
+  word: TimedWord,
+  words: TimedWord[],
+  index: number,
+) => {
   let span = Math.max(EMPHASIS_MIN_DURATION, word.endTime - word.startTime);
   let zoom = span / 2;
   zoom = zoom > 1 ? Math.sqrt(zoom) : zoom ** 3;
@@ -255,8 +270,7 @@ const getEmphasisProfile = (word: TimedWord, words: TimedWord[], index: number) 
   }
 
   const glyphs = Array.from(word.text.trim()).length;
-  const anchorCount =
-    isCjk(word.text) && glyphs > 1 ? 1 : Math.max(1, glyphs);
+  const anchorCount = isCjk(word.text) && glyphs > 1 ? 1 : Math.max(1, glyphs);
 
   return {
     span,
@@ -464,6 +478,13 @@ export class LyricLine implements ILyricLine {
   private bgTime = Number.NaN;
   private bgShow = 0;
   private mainHeight = 0;
+  // Absolute time when the last emphasized word's glow has fully settled, so the
+  // line can keep rendering its glow recovery even after the next line starts.
+  private emphasisEnd = -Infinity;
+  // Eased 1→0 colour level: 1 while active/glowing, decays to 0 on deactivation
+  // so the line's fill fades from white back to idle instead of snapping.
+  private activeLevel = 0;
+  private activeStamp = -1;
 
   private getBackgroundBounds() {
     const start = this.lyricLine.time;
@@ -683,7 +704,10 @@ export class LyricLine implements ILyricLine {
         }
       });
     } else {
-      const baseOpacity = isBackground ? BG_IDLE_ALPHA : 0.3;
+      const idle = isBackground ? BG_IDLE_ALPHA : 0.3;
+      // Fade from the lit (white) colour back to idle instead of snapping when
+      // the line just went inactive.
+      const baseOpacity = idle + (1 - idle) * clamp01(this.activeLevel);
       this.ctx.fillStyle = `rgba(255, 255, 255, ${baseOpacity})`;
       this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
     }
@@ -693,24 +717,50 @@ export class LyricLine implements ILyricLine {
         ? this.layout.words[this.layout.words.length - 1].y
         : 0;
 
-    const hasSecondary =
+    const hasTrans =
       this.layout.translationLines && this.layout.translationLines.length > 0;
+    const hasRoman =
+      this.layout.romanizationLines && this.layout.romanizationLines.length > 0;
 
-    if (hasSecondary) {
+    if (hasTrans || hasRoman) {
       this.ctx.font = transFont;
-      this.ctx.fillStyle = isBackground
-        ? `rgba(255, 255, 255, ${BG_TRANS_ALPHA})`
-        : `rgba(255, 255, 255, ${TRANS_ALPHA})`;
       const baseY = lastWordY + mainHeight * 1.2;
       let y = baseY;
-      this.layout.translationLines!.forEach((lineText) => {
-        const x =
-          this.lyricLine.align === "right"
-            ? Math.max(0, this.layout!.textWidth - this.ctx.measureText(lineText).width)
-            : 0;
-        this.ctx.fillText(lineText, x, y);
-        y += transHeight;
-      });
+
+      // Draw romanization first (closer to main text), then translation
+      if (hasRoman) {
+        this.ctx.fillStyle = isBackground
+          ? `rgba(255, 255, 255, ${BG_TRANS_ALPHA * 0.7})`
+          : `rgba(255, 255, 255, ${TRANS_ALPHA * 0.7})`;
+        this.layout.romanizationLines!.forEach((lineText) => {
+          const x =
+            this.lyricLine.align === "right"
+              ? Math.max(
+                  0,
+                  this.layout!.textWidth - this.ctx.measureText(lineText).width,
+                )
+              : 0;
+          this.ctx.fillText(lineText, x, y);
+          y += transHeight;
+        });
+      }
+
+      if (hasTrans) {
+        this.ctx.fillStyle = isBackground
+          ? `rgba(255, 255, 255, ${BG_TRANS_ALPHA})`
+          : `rgba(255, 255, 255, ${TRANS_ALPHA})`;
+        this.layout.translationLines!.forEach((lineText) => {
+          const x =
+            this.lyricLine.align === "right"
+              ? Math.max(
+                  0,
+                  this.layout!.textWidth - this.ctx.measureText(lineText).width,
+                )
+              : 0;
+          this.ctx.fillText(lineText, x, y);
+          y += transHeight;
+        });
+      }
     }
 
     this.ctx.restore();
@@ -1131,7 +1181,17 @@ export class LyricLine implements ILyricLine {
     this.mainHeight = mainHeight;
 
     const baseSize = (this.isMobile ? 32 : 40) * fontScale;
-    const paddingY = this.isMobile ? 18 : 24;
+    const top = this.lyricLine.isBackground
+      ? this.isMobile
+        ? 10
+        : 12
+      : this.isMobile
+        ? 18
+        : 24;
+    const bottom = this.lyricLine.isBackground ? (this.isMobile ? 4 : 6) : top;
+    const gap =
+      mainHeight *
+      (this.lyricLine.isBackground ? 0.18 : WRAPPED_LINE_GAP_RATIO);
     const paddingX = this.isMobile ? 24 : 56;
     // Duet lines get reduced max width (~65% of container)
     const duetRatio = this.lyricLine.isDuet ? (this.isMobile ? 0.88 : 0.78) : 1;
@@ -1161,19 +1221,17 @@ export class LyricLine implements ILyricLine {
       maxWidth,
       baseSize,
       mainHeight,
-      paddingY,
+      paddingY: top,
       mainFont: main,
-      wrapLineGap: mainHeight * WRAPPED_LINE_GAP_RATIO,
+      wrapLineGap: gap,
     });
 
     let blockHeight = lineHeight;
     let translationLines: string[] | undefined;
+    let romanizationLines: string[] | undefined;
     let effectiveTextWidth = textWidth;
     let translationWidth = 0;
-
-    // Secondary text: prefer translation, fall back to romanization
-    const secondaryText =
-      this.lyricLine.translation ?? this.lyricLine.romanization;
+    let romanizationWidth = 0;
 
     // Use suggested width if provided and larger than current text width, but not exceeding maxWidth
     // Otherwise use textWidth (if > 0) or maxWidth
@@ -1185,9 +1243,9 @@ export class LyricLine implements ILyricLine {
       baseWrapWidth = Math.min(suggestedTranslationWidth, maxWidth);
     }
 
-    if (secondaryText) {
+    if (this.lyricLine.translation) {
       const translationResult = this.measureTranslationLines({
-        translation: secondaryText,
+        translation: this.lyricLine.translation,
         maxWidth: baseWrapWidth,
         transHeight,
         transFont: trans,
@@ -1198,6 +1256,19 @@ export class LyricLine implements ILyricLine {
       effectiveTextWidth = Math.max(effectiveTextWidth, translationWidth);
     }
 
+    if (this.lyricLine.romanization) {
+      const romanResult = this.measureTranslationLines({
+        translation: this.lyricLine.romanization,
+        maxWidth: baseWrapWidth,
+        transHeight,
+        transFont: trans,
+      });
+      romanizationLines = romanResult.lines;
+      blockHeight += romanResult.height;
+      romanizationWidth = Math.min(romanResult.width ?? 0, maxWidth);
+      effectiveTextWidth = Math.max(effectiveTextWidth, romanizationWidth);
+    }
+
     const placed = alignWords(
       words,
       this.lyricLine.align,
@@ -1205,7 +1276,7 @@ export class LyricLine implements ILyricLine {
       effectiveTextWidth,
     );
 
-    blockHeight += paddingY;
+    blockHeight += bottom;
     this._height = blockHeight;
 
     this.layout = {
@@ -1215,9 +1286,13 @@ export class LyricLine implements ILyricLine {
       fullText: this.lyricLine.text,
       translation: this.lyricLine.translation,
       translationLines,
+      romanizationLines,
       textWidth: Math.max(effectiveTextWidth, textWidth),
       translationWidth,
+      romanizationWidth,
     };
+
+    this.emphasisEnd = this.computeEmphasisEnd();
 
     // Store logical dimensions
 
@@ -1242,6 +1317,35 @@ export class LyricLine implements ILyricLine {
     return this.layout?.textWidth || 0;
   }
 
+  // Latest absolute time any emphasized word is still animating its glow.
+  // Grouped by row to match drawFullLine's trailing-word detection exactly.
+  private computeEmphasisEnd(): number {
+    if (!this.layout) return -Infinity;
+
+    const rows = new Map<number, WordLayout[]>();
+    this.layout.words.forEach((word) => {
+      const key = Math.round(word.y);
+      const list = rows.get(key);
+      if (list) list.push(word);
+      else rows.set(key, [word]);
+    });
+
+    let end = -Infinity;
+    rows.forEach((rowWords) => {
+      rowWords.forEach((word, index) => {
+        if (!shouldEmphasizeWord(word)) return;
+        const tail =
+          word.startTime + getWordAnimationDuration(word, rowWords, index);
+        if (tail > end) end = tail;
+      });
+    });
+    return end;
+  }
+
+  public getEmphasisEnd() {
+    return this.emphasisEnd;
+  }
+
   public draw(
     currentTime: number,
     isActive: boolean,
@@ -1249,6 +1353,22 @@ export class LyricLine implements ILyricLine {
     hoverProgress: number = isHovered ? 1 : 0,
   ) {
     if (!this.layout) return;
+
+    // Ease the colour level: snap up while active/glowing, decay once it ends so
+    // the line fades white→idle. Updated before any early-out so the timing and
+    // redraw gating stay consistent.
+    const fadeNow = performance.now();
+    const fadeDt =
+      this.activeStamp === -1
+        ? 0.016
+        : Math.min(0.1, Math.max(0.001, (fadeNow - this.activeStamp) / 1000));
+    this.activeStamp = fadeNow;
+    if (isActive) {
+      this.activeLevel = 1;
+    } else if (this.activeLevel > 0.001) {
+      this.activeLevel *= Math.exp(-fadeDt / ACTIVE_FADE_TAU);
+      if (this.activeLevel <= 0.001) this.activeLevel = 0;
+    }
 
     const isBackground = Boolean(this.lyricLine.isBackground);
     const bgShow = isBackground ? this.getBackgroundShow(currentTime) : 0;
@@ -1264,7 +1384,8 @@ export class LyricLine implements ILyricLine {
       !this.isDirty &&
       !this.lastIsActive &&
       this.lastIsHovered === isHovered &&
-      !hoverAnimating;
+      !hoverAnimating &&
+      this.activeLevel <= 0.001;
     if (stateUnchanged) return;
 
     const fontScale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
@@ -1319,10 +1440,13 @@ export class LyricLine implements ILyricLine {
 
   public getCurrentHeight(currentTime?: number) {
     if (this.lyricLine.isBackground) {
-      return this._height * revealShapeOf(
-        this.getBackgroundShow(currentTime),
-        this.hasBackgroundWindow(currentTime),
-      ).y;
+      return (
+        this._height *
+        revealShapeOf(
+          this.getBackgroundShow(currentTime),
+          this.hasBackgroundWindow(currentTime),
+        ).y
+      );
     }
     return this._height;
   }
@@ -1335,11 +1459,18 @@ export class LyricLine implements ILyricLine {
   }
 
   public getFocusOffset() {
-    if (!this.layout || this.layout.words.length === 0 || this.mainHeight <= 0) {
+    if (
+      !this.layout ||
+      this.layout.words.length === 0 ||
+      this.mainHeight <= 0
+    ) {
       return this._height * 0.5;
     }
 
-    const top = this.layout.words.reduce((min, word) => Math.min(min, word.y), Infinity);
+    const top = this.layout.words.reduce(
+      (min, word) => Math.min(min, word.y),
+      Infinity,
+    );
     if (!Number.isFinite(top)) {
       return this._height * 0.5;
     }

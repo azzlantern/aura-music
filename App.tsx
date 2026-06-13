@@ -8,12 +8,14 @@ import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
+import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import MediaSessionController from "./components/MediaSessionController";
 import { APP_CONFIG } from "./config";
+import { getThemeColor } from "./services/utils";
 
 const App: React.FC = () => {
   const { toast } = useToast();
@@ -67,6 +69,7 @@ const App: React.FC = () => {
   const [dragOffsetX, setDragOffsetX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const mobileViewportRef = useRef<HTMLDivElement>(null);
+  const theme = currentSong?.themeColor || getThemeColor(currentSong?.colors);
   const [paneWidth, setPaneWidth] = useState(() => {
     if (typeof window === "undefined") return 0;
     return window.innerWidth;
@@ -86,6 +89,19 @@ const App: React.FC = () => {
       audioRef.current.volume = volume;
     }
   }, [volume, audioRef]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let meta = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]',
+    );
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -170,6 +186,18 @@ const App: React.FC = () => {
     const timer = setTimeout(loadDefaultPlaylist, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
     return () => clearTimeout(timer);
   }, [playlist.isReady, playlist.queue.length]); // 添加 playlist.queue.length 依赖以确保判断准确
+
+  // 显示歌单加载进度
+  const hasShownLoadingRef = useRef(false);
+  useEffect(() => {
+    if (playlist.importingCount > 0 && !hasShownLoadingRef.current) {
+      hasShownLoadingRef.current = true;
+      toast.info("正在加载歌单...");
+    }
+    if (playlist.importingCount === 0) {
+      hasShownLoadingRef.current = false;
+    }
+  }, [playlist.importingCount, toast]);
 
   // 监听队列变化，处理初始加载后的自动播放
   const hasAutoPlayedRef = useRef(false);
@@ -340,6 +368,14 @@ const App: React.FC = () => {
               currentSongId={currentSong?.id}
               onPlay={playIndex}
               onImport={handleImportUrl}
+              onRefresh={async () => {
+                const result = await playlist.refreshFromUrl();
+                if (result.added > 0) {
+                  toast.success(`已刷新歌单，新增 ${result.added} 首歌曲`);
+                } else {
+                  toast.info("歌单已是最新");
+                }
+              }}
               onReorder={playlist.reorder}
               onRemove={playlist.removeSongs}
               accentColor={accentColor}
@@ -423,6 +459,8 @@ const App: React.FC = () => {
         onPrev={playPrev}
         onSeek={handleSeek}
       />
+
+      <PwaUpdatePrompt />
 
       {/* Top Bar */}
       <TopBar

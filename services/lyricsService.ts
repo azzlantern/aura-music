@@ -1,11 +1,9 @@
 import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
-const LYRIC_API_BASE = "https://zm.wwoyun.cn";
 const METING_API = "https://api.qijieya.cn/meting/";
-const NETEASE_SEARCH_API = "https://zm.wwoyun.cn/cloudsearch";
-const NETEASE_API_BASE = "http://music.163.com/api";
-const NETEASECLOUD_API_BASE = "https://zm.wwoyun.cn";
+const NETEASE_SEARCH_API = "https://api.jimsdeng.eu.org/cloudsearch";
+const NETEASECLOUD_API_BASE = "https://api.jimsdeng.eu.org";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
@@ -155,7 +153,9 @@ const TTML_META_LABELS: Record<string, string> = {
 const TTML_AUTHOR_KEY = "ttmlAuthorGithubLogin";
 const TTML_SOURCE_TEXT = "TTML 歌词来源: AMLL TTML Database";
 const TTML_META_KEYS = Object.keys(TTML_META_LABELS);
-const TTML_DISPLAY_KEYS = TTML_META_KEYS.filter((key) => key !== TTML_AUTHOR_KEY);
+const TTML_DISPLAY_KEYS = TTML_META_KEYS.filter(
+  (key) => key !== TTML_AUTHOR_KEY,
+);
 const HAN_REGEX = /\p{Script=Han}/u;
 const KANA_REGEX = /\p{Script=Hiragana}|\p{Script=Katakana}/u;
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
@@ -389,16 +389,14 @@ export const searchNetEase = async (
 
 export const fetchNeteasePlaylist = async (
   playlistId: string,
+  onProgress?: (loaded: number) => void,
 ): Promise<NeteaseTrackInfo[]> => {
   try {
-    // 使用網易雲音樂 API 獲取歌單所有歌曲
-    // 由於接口限制，需要分頁獲取，每次獲取 50 首
     const allTracks: NeteaseTrackInfo[] = [];
-    const limit = 50;
+    const limit = 100;
     let offset = 0;
-    let shouldContinue = true;
 
-    while (shouldContinue) {
+    while (true) {
       const url = `${NETEASECLOUD_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
       const data = (await fetchViaProxy(url)) as NeteasePlaylistResponse;
       const songs = data.songs ?? [];
@@ -409,13 +407,9 @@ export const fetchNeteasePlaylist = async (
       const tracks = songs.map(mapNeteaseSongToTrack);
 
       allTracks.push(...tracks);
+      onProgress?.(allTracks.length);
 
-      // Continue fetching if the current page was full
-      if (songs.length < limit) {
-        shouldContinue = false;
-      } else {
-        offset += limit;
-      }
+      offset += songs.length;
     }
 
     return allTracks;
