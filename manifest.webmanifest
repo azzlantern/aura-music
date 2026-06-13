@@ -1,0 +1,1 @@
+{"name":"Aura Music","short_name":"Aura Music","description":"A polished music player with animated lyrics and immersive visuals.","start_url":".","display":"standalone","background_color":"#00150a","theme_color":"#16a34a","lang":"en","scope":".","icons":[{"src":"pwa-icon.svg","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}]}
