@@ -23,6 +23,8 @@ const BG_FUTURE_ALPHA = 0.42;
 const BG_IDLE_ALPHA = 0.24;
 const BG_TRANS_ALPHA = 0.74;
 const TRANS_ALPHA = 0.8;
+/** The romanization dims when a translation shares the secondary rows. */
+const SECONDARY_DIM = 0.7;
 
 const isMacPlatform = () => {
   if (typeof navigator === "undefined") return false;
@@ -124,6 +126,7 @@ export interface LineLayout {
   fullText: string;
   translation?: string;
   translationLines?: string[];
+  romanizationLines?: string[];
   textWidth: number;
   translationWidth?: number;
 }
@@ -627,27 +630,36 @@ export class LyricLine implements ILyricLine {
         ? this.layout.words[this.layout.words.length - 1].y
         : 0;
 
-    const hasSecondary =
-      this.layout.translationLines && this.layout.translationLines.length > 0;
+    const romanLines = this.layout.romanizationLines;
+    const transLines = this.layout.translationLines;
+    const hasSecondary = Boolean(romanLines?.length || transLines?.length);
 
     if (hasSecondary) {
       this.ctx.font = transFont;
-      this.ctx.fillStyle = isBackground
-        ? `rgba(255, 255, 255, ${BG_TRANS_ALPHA})`
-        : `rgba(255, 255, 255, ${TRANS_ALPHA})`;
       const baseY = lastWordY + mainHeight * 1.2;
+      const alpha = isBackground ? BG_TRANS_ALPHA : TRANS_ALPHA;
+      const dim = transLines?.length ? SECONDARY_DIM : 1;
       let y = baseY;
-      this.layout.translationLines!.forEach((lineText) => {
-        const x =
-          this.lyricLine.align === "right"
-            ? Math.max(
-                0,
-                this.layout!.textWidth - this.ctx.measureText(lineText).width,
-              )
-            : 0;
-        this.ctx.fillText(lineText, x, y);
-        y += transHeight;
-      });
+      const drawLines = (lines: string[]) => {
+        lines.forEach((lineText) => {
+          const x =
+            this.lyricLine.align === "right"
+              ? Math.max(
+                  0,
+                  this.layout!.textWidth - this.ctx.measureText(lineText).width,
+                )
+              : 0;
+          this.ctx.fillText(lineText, x, y);
+          y += transHeight;
+        });
+      };
+
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha * dim})`;
+      if (romanLines?.length) drawLines(romanLines);
+      if (transLines?.length) {
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        drawLines(transLines);
+      }
     }
 
     this.ctx.restore();
@@ -959,7 +971,9 @@ export class LyricLine implements ILyricLine {
     const fontScale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
     const { main, trans, mainHeight, transHeight } = this.fonts;
 
-    const secondary = this.lyricLine.translation?.trim() || this.lyricLine.romanization?.trim();
+    const translation = this.lyricLine.translation?.trim();
+    const roman = this.lyricLine.romanization?.trim();
+    const secondary = translation || roman;
     const baseSize = (this.isMobile ? 32 : 40) * fontScale;
     const top = this.lyricLine.isBackground
       ? this.isMobile
@@ -998,6 +1012,7 @@ export class LyricLine implements ILyricLine {
 
     let blockHeight = lineHeight;
     let translationLines: string[] | undefined;
+    let romanLines: string[] | undefined;
     let effectiveTextWidth = textWidth;
     let translationWidth = 0;
 
@@ -1011,13 +1026,30 @@ export class LyricLine implements ILyricLine {
       baseWrapWidth = Math.min(suggestedTranslationWidth, maxWidth);
     }
 
-    if (secondary) {
-      const translationResult = this.measureTranslationLines({
-        translation: secondary,
+    const measureSecondary = (text: string) =>
+      this.measureTranslationLines({
+        translation: text,
         maxWidth: baseWrapWidth,
         transHeight,
         transFont: trans,
       });
+
+    if (roman && translation) {
+      // Both are present: the romanization reads directly under the main text
+      // and the translation follows beneath it.
+      const romanResult = measureSecondary(roman);
+      romanLines = romanResult.lines;
+      blockHeight += romanResult.height;
+      const transResult = measureSecondary(translation);
+      translationLines = transResult.lines;
+      blockHeight += transResult.height;
+      translationWidth = Math.min(
+        Math.max(romanResult.width ?? 0, transResult.width ?? 0),
+        maxWidth,
+      );
+      effectiveTextWidth = Math.max(effectiveTextWidth, translationWidth);
+    } else if (secondary) {
+      const translationResult = measureSecondary(secondary);
       translationLines = translationResult.lines;
       blockHeight += translationResult.height;
       translationWidth = Math.min(translationResult.width ?? 0, maxWidth);
@@ -1041,6 +1073,7 @@ export class LyricLine implements ILyricLine {
       fullText: this.lyricLine.text,
       translation: this.lyricLine.translation,
       translationLines,
+      romanizationLines: romanLines,
       textWidth: Math.max(effectiveTextWidth, textWidth),
       translationWidth,
     };
