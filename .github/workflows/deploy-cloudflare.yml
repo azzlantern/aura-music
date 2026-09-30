@@ -24,10 +24,11 @@ jobs:
       - name: Build
         run: VITE_BASE_PATH="/" bun run build
 
+      # cloudflare/pages-action@v1 no longer exists upstream, so this uses the
+      # maintained wrangler action with the equivalent `pages deploy` command.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: auramusic
-          directory: ./apps/web-player/dist
+          command: pages deploy ./apps/web-player/dist --project-name=auramusic --branch=main
