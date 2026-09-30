@@ -308,13 +308,14 @@ const SearchModal: React.FC<SearchModalProps> = ({
       >
         <GlassMaterial />
         {/* Header Area */}
-        <div className="flex flex-col px-5 pt-5 pb-3 gap-4 border-b border-white/10 shrink-0 bg-white/5 z-10">
-          {/* macOS-style segmented control: a recessed track with a single
+        <div className="flex flex-col px-5 pt-5 pb-3 gap-4 shrink-0 bg-white/5 z-10 shadow-[inset_0_-0.5px_0_rgba(255,255,255,0.17)]">
+          {/* macOS-style segmented control: a liquid-glass track with a single
               raised, sliding segment (top highlight + soft shadow). */}
-          <div className="relative isolate flex items-center self-center w-full max-w-xs mb-1 p-[2px] rounded-[9px] bg-black/25 shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.3),0_0_0_0.5px_rgba(255,255,255,0.06)]">
+          <div className="glass-surface relative isolate flex items-center self-center w-full max-w-xs mb-1 p-[2px] rounded-[11px]">
+            <GlassMaterial preset="menu" shape="rect" />
             {/* Raised selected segment */}
             <div
-              className="absolute top-[2px] bottom-[2px] rounded-[7px] bg-white/[0.16] shadow-[0_1px_1px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.14),inset_0_0.5px_0_rgba(255,255,255,0.3)] transition-[left] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
+              className="absolute top-[2px] bottom-[2px] rounded-[9px] bg-white/[0.18] shadow-[0_1px_1px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.14),inset_0_0.5px_0_rgba(255,255,255,0.3)] transition-[left] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
               style={{
                 left: search.activeTab === "queue" ? "2px" : "50%",
                 width: "calc(50% - 2px)",
@@ -362,13 +363,12 @@ const SearchModal: React.FC<SearchModalProps> = ({
               }
               className="
                         w-full pl-12 pr-4 py-3
-                        bg-black/20 hover:bg-black/25 focus:bg-black/30
-                        border border-white/10 focus:border-white/15
+                        bg-white/[0.06] hover:bg-white/[0.08] focus:bg-white/[0.1]
                         rounded-[10px]
                         text-lg font-medium text-white placeholder:text-white/35
                         outline-hidden
-                        shadow-[inset_0_1px_2px_rgba(0,0,0,0.28)]
-                        focus:shadow-[inset_0_1px_2px_rgba(0,0,0,0.28),0_0_0_3.5px_rgba(10,132,255,0.35)]
+                        shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.08),inset_0_1px_2px_rgba(0,0,0,0.18)]
+                        focus:shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.12)]
                         transition-all duration-200
                     "
             />
