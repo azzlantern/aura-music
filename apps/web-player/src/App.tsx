@@ -1,4 +1,5 @@
 import AboutDialog from "./AboutDialog";
+import { APP_CONFIG } from "./config";
 import React, { useCallback, useEffect, useState } from "react";
 import { useToast } from "@aura-music/view/hooks/useToast";
 import { PlayState, Song } from "@aura-music/core/types";
@@ -168,6 +169,35 @@ const App: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // 自动加载默认歌单 - 只在初始化时加载一次
+  useEffect(() => {
+    if (!playlist.isReady) return;
+    if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
+    // 队列已有内容（含从 IndexedDB 恢复的）就不再自动加载
+    if (playlist.queue.length > 0) return;
+
+    const timer = setTimeout(async () => {
+      const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
+      if (!result.success || result.songs.length === 0) {
+        console.warn("自动加载歌单失败:", result.message);
+        return;
+      }
+      toast.success(dict.app.importOk(result.songs.length));
+      if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
+        handlePlaylistAddition(result.songs, true);
+      }
+    }, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
+
+    return () => clearTimeout(timer);
+  }, [
+    playlist.isReady,
+    playlist.queue.length,
+    playlist.importFromUrl,
+    toast,
+    dict.app,
+    handlePlaylistAddition,
+  ]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
