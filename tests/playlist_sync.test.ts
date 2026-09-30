@@ -100,6 +100,18 @@ test("playlist source parsing rejects junk", () => {
   });
 });
 
+test("a playlist source remembers a hand-made order", () => {
+  const raw = JSON.stringify({ url: "u", ids: ["a", "b"], manual: true });
+
+  expect(parsePlaylistSource(raw)).toEqual({ url: "u", ids: ["a", "b"], manual: true });
+});
+
+test("a non-boolean manual flag is dropped", () => {
+  expect(
+    parsePlaylistSource(JSON.stringify({ url: "u", ids: ["a"], manual: "yes" })),
+  ).toEqual({ url: "u", ids: ["a"] });
+});
+
 test("a queue that mostly overlaps the playlist counts as its previous state", () => {
   const queue = [
     song("1", "1"),

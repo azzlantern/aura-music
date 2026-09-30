@@ -370,6 +370,9 @@ export const savePlaybackSnapshot = (snap: PlaybackSnapshot) => {
 export interface PlaylistSource {
   url: string;
   ids: string[];
+  /** The queue was ordered by hand, so a sync that finds the playlist unchanged
+   *  keeps that order instead of aligning the queue to the playlist. */
+  manual?: boolean;
 }
 
 export const parsePlaylistSource = (raw: string | null): PlaylistSource | null => {
@@ -391,6 +394,7 @@ export const parsePlaylistSource = (raw: string | null): PlaylistSource | null =
       ids: value.ids.filter(
         (id): id is string => typeof id === "string" && id.length > 0,
       ),
+      manual: value.manual === true ? true : undefined,
     };
   } catch {
     return null;

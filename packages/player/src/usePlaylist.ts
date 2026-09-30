@@ -206,6 +206,12 @@ export const usePlaylist = (messages: PlaylistOptions = {
           (order.get(a.id) ?? ids.length) - (order.get(b.id) ?? ids.length),
       );
     });
+
+    // Remember the hand-made order so the next sync does not undo it.
+    const stored = loadPlaylistSource();
+    if (stored) {
+      savePlaylistSource({ ...stored, manual: true });
+    }
   }, []);
 
   const removeSongs = useCallback((ids: string[]) => {
@@ -464,15 +470,27 @@ export const usePlaylist = (messages: PlaylistOptions = {
         // Rebuild instead of append: a playlist can insert a track in the
         // middle, and the queue order has to keep matching the playlist.
         const aligned = alignQueue(queue, tracks, owned, toSong);
+        // An order made by hand wins until the playlist itself gains or loses
+        // tracks; a change to the playlist aligns the queue to it again.
+        const handmade =
+          stored !== null &&
+          stored.url === target &&
+          stored.manual === true &&
+          aligned.added.length === 0 &&
+          aligned.removed.length === 0;
         const same =
           aligned.queue.length === queue.length &&
           aligned.queue.every((song, idx) => song.id === queue[idx].id);
 
-        if (!same) {
+        if (!handmade && !same) {
           setQueue(aligned.queue);
         }
 
-        savePlaylistSource({ url: target, ids });
+        savePlaylistSource({
+          url: target,
+          ids,
+          manual: handmade ? true : undefined,
+        });
         return {
           added: aligned.added.length,
           removed: aligned.removed.length,
