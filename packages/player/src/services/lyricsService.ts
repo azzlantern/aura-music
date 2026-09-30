@@ -391,9 +391,9 @@ export const fetchNeteasePlaylist = async (
 ): Promise<NeteaseTrackInfo[]> => {
   try {
     // 使用網易雲音樂 API 獲取歌單所有歌曲
-    // 由於接口限制，需要分頁獲取
+    // 由於接口限制，需要分頁獲取；接口接受較大的 limit，大歌單通常一次取完
     const allTracks: NeteaseTrackInfo[] = [];
-    const limit = 100;
+    const limit = 500;
     let offset = 0;
 
     while (true) {
