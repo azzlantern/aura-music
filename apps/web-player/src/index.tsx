@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "@aura-music/view/style.css";
+import "./fonts.css";
 import { ToastProvider } from "@aura-music/view/components/Toast";
 import { I18nProvider } from "@aura-music/view/hooks/useI18n";
 

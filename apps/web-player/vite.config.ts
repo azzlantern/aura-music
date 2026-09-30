@@ -41,6 +41,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"],
           navigateFallback: "index.html",
+          // The self-hosted UI font is ~4.7 MiB, well past Workbox's 2 MiB default.
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
       }),
     ],

@@ -1,0 +1,10 @@
+/* Self-hosted UI font (~4.7 MiB, covers Latin and CJK). It lives next to the
+   app rather than in the CSS bundle so Vite fingerprints it and rewrites the
+   URL for the production base path. */
+@font-face {
+  font-family: "MyCustomRoboto";
+  src: url("./assets/fonts/Roboto-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
