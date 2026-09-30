@@ -353,7 +353,9 @@ const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
     const trimmed = text.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch (err) {
-    console.error("TTML lyrics request error", err);
+    // Most songs have no TTML entry, so a failed lookup is routine and stays
+    // out of the error channel.
+    console.debug("TTML lyrics request error", err);
     return null;
   }
 };
