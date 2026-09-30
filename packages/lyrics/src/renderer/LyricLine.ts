@@ -434,12 +434,14 @@ const getFonts = (isMobile: boolean, scale: number = 1) => {
   const baseSize = (isMobile ? 34 : 36) * scale;
   const transSize = (isMobile ? 19 : 20) * scale;
   const mac = isMacPlatform();
+  // Canvas text ignores the document's font-family, so the self-hosted face has
+  // to be named here as well for lyric lines to actually use it.
   const mainFamily = mac
-    ? `"SF Pro Display", "SF Pro", "PingFang SC", "Inter", sans-serif`
-    : `"SF Pro Display", "PingFang SC","Inter", sans-serif`;
+    ? `"MyCustomRoboto", "SF Pro Display", "SF Pro", "PingFang SC", "Inter", sans-serif`
+    : `"MyCustomRoboto", "SF Pro Display", "PingFang SC", "Inter", sans-serif`;
   const transFamily = mac
-    ? `"SF Pro Text", "SF Pro", "PingFang SC", "Inter", sans-serif`
-    : `"SF Pro Text", "PingFang SC", "Inter",sans-serif`;
+    ? `"MyCustomRoboto", "SF Pro Text", "SF Pro", "PingFang SC", "Inter", sans-serif`
+    : `"MyCustomRoboto", "SF Pro Text", "PingFang SC", "Inter", sans-serif`;
   return {
     main: `800 ${baseSize}px ${mainFamily}`,
     trans: `600 ${transSize}px ${transFamily}`,
