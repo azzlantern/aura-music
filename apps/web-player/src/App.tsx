@@ -35,7 +35,12 @@ const App: React.FC = () => {
   const { toast } = useToast();
   const { dict } = useI18n();
   const [about, showAbout] = useState(false);
-  const playlist = usePlaylist({ unknownArtist: dict.playlist.unknownArtist, invalidUrl: dict.playlist.invalidUrl, importFail: dict.app.importFail });
+  const playlist = usePlaylist({
+    unknownArtist: dict.playlist.unknownArtist,
+    invalidUrl: dict.playlist.invalidUrl,
+    importFail: dict.app.importFail,
+    defaultUrl: APP_CONFIG.DEFAULT_PLAYLIST.URL,
+  });
   const player = usePlayer({
     isReady: playlist.isReady,
     queue: playlist.queue,
@@ -235,6 +240,15 @@ const App: React.FC = () => {
     toast,
   ]);
 
+  const handleRefresh = useCallback(async () => {
+    const result = await playlist.refreshFromUrl();
+    if (result.added > 0) {
+      toast.success(dict.list.refreshed(result.added));
+      return;
+    }
+    toast.info(dict.list.upToDate);
+  }, [dict.list.refreshed, dict.list.upToDate, playlist.refreshFromUrl, toast]);
+
   const handleImportAndPlay = useCallback((song: Song) => {
     // Check if song already exists in queue (by neteaseId for cloud songs, or by id)
     const existingIndex = playlist.queue.findIndex((s) => {
@@ -353,6 +367,7 @@ const App: React.FC = () => {
               currentSongId={currentSong?.id}
               onPlay={playIndex}
               onImport={handleImportUrl}
+              onRefresh={handleRefresh}
               onReorder={playlist.reorder}
               onRemove={playlist.removeSongs}
               accentColor={accentColor}

@@ -69,12 +69,19 @@ export interface PlaylistMessages {
   importFail: string;
 }
 
-export const usePlaylist = (messages: PlaylistMessages = {
+export interface PlaylistOptions extends PlaylistMessages {
+  // Refresh fallback used when nothing was imported during this session.
+  defaultUrl?: string;
+}
+
+export const usePlaylist = (messages: PlaylistOptions = {
   unknownArtist: "Unknown artist", invalidUrl: "Invalid music URL", importFail: "Unable to import music",
 }) => {
   const [queue, setQueue] = useState<Song[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [importingCount, setImportingCount] = useState(0);
   const urlsRef = useRef(new Map<string, string>());
+  const lastImportUrlRef = useRef<string | null>(null);
 
   const storeUrl = useCallback((id: string, url: string) => {
     const prev = urlsRef.current.get(id);
@@ -375,10 +382,14 @@ export const usePlaylist = (messages: PlaylistMessages = {
         };
       }
 
+      lastImportUrlRef.current = input;
+
       const newSongs: Song[] = [];
       try {
         if (parsed.type === "playlist") {
-          const songs = await fetchNeteasePlaylist(parsed.id);
+          setImportingCount(0);
+          const songs = await fetchNeteasePlaylist(parsed.id, setImportingCount);
+          setImportingCount(0);
           songs.forEach((song) => {
             const origin = getNeteaseAudioUrl(song.id);
             newSongs.push({
@@ -407,6 +418,7 @@ export const usePlaylist = (messages: PlaylistMessages = {
           }
         }
       } catch (err) {
+        setImportingCount(0);
         console.error("Failed to fetch Netease music", err);
         return {
           success: false,
@@ -429,15 +441,61 @@ export const usePlaylist = (messages: PlaylistMessages = {
     [appendSongs, messages.importFail, messages.invalidUrl],
   );
 
+  const refreshFromUrl = useCallback(
+    async (url?: string): Promise<{ added: number; total: number }> => {
+      const target = url ?? lastImportUrlRef.current ?? messages.defaultUrl;
+      if (!target) return { added: 0, total: 0 };
+
+      const parsed = parseNeteaseLink(target);
+      if (!parsed || parsed.type !== "playlist") return { added: 0, total: 0 };
+
+      const existing = new Set(
+        queue.filter((song) => song.neteaseId).map((song) => song.neteaseId),
+      );
+
+      setImportingCount(0);
+      try {
+        const tracks = await fetchNeteasePlaylist(parsed.id, setImportingCount);
+        setImportingCount(0);
+
+        const fresh = tracks.filter((track) => !existing.has(track.id));
+        if (fresh.length === 0) return { added: 0, total: tracks.length };
+
+        appendSongs(
+          fresh.map((song) => {
+            const origin = getNeteaseAudioUrl(song.id);
+            return {
+              ...song,
+              fileUrl: origin,
+              source: "remote" as const,
+              origin,
+              lyrics: [],
+              colors: [],
+              needsLyricsMatch: true,
+            };
+          }),
+        );
+        return { added: fresh.length, total: tracks.length };
+      } catch (err) {
+        setImportingCount(0);
+        console.error("Failed to refresh playlist", err);
+        return { added: 0, total: 0 };
+      }
+    },
+    [appendSongs, messages.defaultUrl, queue],
+  );
+
   return {
     queue,
     isReady,
+    importingCount,
     updateSongInQueue,
     addSongs,
     reorder,
     removeSongs,
     addLocalFiles,
     importFromUrl,
+    refreshFromUrl,
     setQueue,
   };
 };

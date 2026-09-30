@@ -98,6 +98,9 @@ interface Dict {
     empty: string;
     drag: string;
     reorder: (title: string) => string;
+    refresh: string;
+    refreshed: (count: number) => string;
+    upToDate: string;
   };
   search: {
     online: string;
@@ -224,6 +227,9 @@ export const dicts: Record<Lang, Dict> = {
       empty: "Queue is empty",
       drag: "Drag to reorder",
       reorder: (title) => `Reorder ${title}`,
+      refresh: "Refresh playlist",
+      refreshed: (count) => `Refreshed: ${count} new songs`,
+      upToDate: "Playlist is up to date",
     },
     search: {
       online: "Search online...",
@@ -349,6 +355,9 @@ export const dicts: Record<Lang, Dict> = {
       empty: "队列为空",
       drag: "拖动以重新排序",
       reorder: (title) => `重新排序 ${title}`,
+      refresh: "刷新歌单",
+      refreshed: (count) => `已刷新歌单，新增 ${count} 首歌曲`,
+      upToDate: "歌单已是最新",
     },
     search: {
       online: "搜索在线歌曲...",

@@ -9,6 +9,7 @@ import {
   GripIcon,
   PlusIcon,
   QueueIcon,
+  RefreshIcon,
   TrashIcon,
   SelectAllIcon,
 } from "./Icons";
@@ -57,6 +58,7 @@ interface PlaylistPanelProps {
     currentSongId?: string;
     onPlay: (index: number) => void;
     onImport: (url: string) => Promise<boolean>;
+    onRefresh?: () => Promise<void>;
     onReorder: (ids: string[]) => void;
     onRemove: (ids: string[]) => void;
     accentColor: string;
@@ -164,6 +166,7 @@ const PlaylistPanel = React.memo(({
     currentSongId,
     onPlay,
     onImport,
+    onRefresh,
     onReorder,
     onRemove,
     accentColor
@@ -699,6 +702,15 @@ const PlaylistPanel = React.memo(({
                                     >
                                         <PlusIcon className="w-5 h-5" />
                                     </button>
+                                    {onRefresh && (
+                                        <button
+                                            onClick={() => { void onRefresh(); }}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center transition-all text-white/50 hover:text-white hover:bg-white/10"
+                                            title={dict.list.refresh}
+                                        >
+                                            <RefreshIcon className="w-5 h-5" />
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setIsEditing(true)}
                                         className="w-8 h-8 rounded-full flex items-center justify-center transition-all text-white/50 hover:text-white hover:bg-white/10"

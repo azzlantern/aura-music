@@ -387,16 +387,16 @@ export const searchNetEase = async (
 
 export const fetchNeteasePlaylist = async (
   playlistId: string,
+  onProgress?: (loaded: number) => void,
 ): Promise<NeteaseTrackInfo[]> => {
   try {
     // 使用網易雲音樂 API 獲取歌單所有歌曲
-    // 由於接口限制，需要分頁獲取，每次獲取 50 首
+    // 由於接口限制，需要分頁獲取
     const allTracks: NeteaseTrackInfo[] = [];
-    const limit = 50;
+    const limit = 100;
     let offset = 0;
-    let shouldContinue = true;
 
-    while (shouldContinue) {
+    while (true) {
       const url = `${NETEASECLOUD_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
       const data = (await fetchViaProxy(url)) as NeteasePlaylistResponse;
       const songs = data.songs ?? [];
@@ -407,13 +407,11 @@ export const fetchNeteasePlaylist = async (
       const tracks = songs.map(mapNeteaseSongToTrack);
 
       allTracks.push(...tracks);
+      onProgress?.(allTracks.length);
 
-      // Continue fetching if the current page was full
-      if (songs.length < limit) {
-        shouldContinue = false;
-      } else {
-        offset += limit;
-      }
+      // Advance by the songs actually returned: the API caps pages below `limit`,
+      // so stepping by `limit` would skip tracks.
+      offset += songs.length;
     }
 
     return allTracks;
