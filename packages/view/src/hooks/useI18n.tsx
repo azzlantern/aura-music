@@ -54,6 +54,9 @@ interface Dict {
     hintBrand: string;
     hintEnd: string;
     placeholder: string;
+    placeholderId: string;
+    tabId: string;
+    tabUrl: string;
     cancel: string;
     action: string;
     loading: string;
@@ -184,6 +187,9 @@ export const dicts: Record<Lang, Dict> = {
       hintBrand: "Netease Cloud Music",
       hintEnd: "song or playlist link to add to queue.",
       placeholder: "https://music.163.com/...",
+      placeholderId: "e.g. 123456789",
+      tabId: "Playlist ID",
+      tabUrl: "Full link",
       cancel: "Cancel",
       action: "Import",
       loading: "Importing...",
@@ -318,6 +324,9 @@ export const dicts: Record<Lang, Dict> = {
       hintBrand: "网易云音乐",
       hintEnd: "歌曲或歌单链接以加入队列。",
       placeholder: "https://music.163.com/...",
+      placeholderId: "例如: 123456789",
+      tabId: "歌单 ID",
+      tabUrl: "完整链接",
       cancel: "取消",
       action: "导入",
       loading: "导入中...",
