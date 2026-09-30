@@ -88,7 +88,8 @@ interface Dict {
     empty: string;
   };
   list: {
-    playingNext: string;
+    playlist: string;
+    shuffleOn: string;
     songs: (count: number) => string;
     selectAll: string;
     deleteSelected: string;
@@ -217,7 +218,8 @@ export const dicts: Record<Lang, Dict> = {
       empty: "Play music to view lyrics",
     },
     list: {
-      playingNext: "Playing Next",
+      playlist: "My Playlist",
+      shuffleOn: "Shuffle on",
       songs: (count) => `${count} Songs`,
       selectAll: "Select All",
       deleteSelected: "Delete Selected",
@@ -238,8 +240,8 @@ export const dicts: Record<Lang, Dict> = {
     },
     search: {
       online: "Search online...",
-      queue: "Filter queue...",
-      emptyQueue: "No songs in queue",
+      queue: "Filter my playlist...",
+      emptyQueue: "No songs in your playlist",
       press: "Press",
       toSearch: "to search",
       noMatches: "No matches found",
@@ -249,7 +251,7 @@ export const dicts: Record<Lang, Dict> = {
       more: "Scroll for more",
       playNow: "Play Now",
       addToQueue: "Add to Queue",
-      queueLabel: "Current Queue",
+      queueLabel: "My Playlist",
       cloudLabel: "Cloud Music",
     },
     playlist: {
@@ -350,7 +352,8 @@ export const dicts: Record<Lang, Dict> = {
       empty: "播放音乐以查看歌词",
     },
     list: {
-      playingNext: "接下来播放",
+      playlist: "我的歌单",
+      shuffleOn: "随机播放中",
       songs: (count) => `${count} 首歌曲`,
       selectAll: "全选",
       deleteSelected: "删除所选",
@@ -371,8 +374,8 @@ export const dicts: Record<Lang, Dict> = {
     },
     search: {
       online: "搜索在线歌曲...",
-      queue: "筛选队列...",
-      emptyQueue: "队列中暂无歌曲",
+      queue: "筛选我的歌单...",
+      emptyQueue: "我的歌单中暂无歌曲",
       press: "按",
       toSearch: "搜索",
       noMatches: "未找到匹配结果",
@@ -382,7 +385,7 @@ export const dicts: Record<Lang, Dict> = {
       more: "滚动加载更多",
       playNow: "立即播放",
       addToQueue: "加入队列",
-      queueLabel: "当前队列",
+      queueLabel: "我的歌单",
       cloudLabel: "云音乐",
     },
     playlist: {

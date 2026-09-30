@@ -2,7 +2,7 @@ import AboutDialog from "./AboutDialog";
 import { APP_CONFIG } from "./config";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@aura-music/view/hooks/useToast";
-import { PlayState, Song } from "@aura-music/core/types";
+import { PlayMode, PlayState, Song } from "@aura-music/core/types";
 import FluidBackground from "@aura-music/background/FluidBackground";
 import Controls from "@aura-music/view/components/Controls";
 import LyricsView from "@aura-music/lyrics/LyricsView";
@@ -383,6 +383,7 @@ const App: React.FC = () => {
               onReorder={playlist.reorder}
               onRemove={playlist.removeSongs}
               accentColor={accentColor}
+              shuffled={playMode === PlayMode.SHUFFLE}
             />
           }
         />

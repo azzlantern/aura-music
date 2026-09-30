@@ -62,6 +62,7 @@ interface PlaylistPanelProps {
     onReorder: (ids: string[]) => void;
     onRemove: (ids: string[]) => void;
     accentColor: string;
+    shuffled?: boolean;
 }
 
 interface PressState {
@@ -169,7 +170,8 @@ const PlaylistPanel = React.memo(({
     onRefresh,
     onReorder,
     onRemove,
-    accentColor
+    accentColor,
+    shuffled
 }: PlaylistPanelProps) => {
     const { dict } = useI18n();
     const [isAdding, setIsAdding] = useState(false);
@@ -652,7 +654,7 @@ const PlaylistPanel = React.memo(({
                 trigger="[data-queue-trigger]"
                 ref={panelRef}
                 role="dialog"
-                aria-label={dict.list.playingNext}
+                aria-label={dict.list.playlist}
                 style={{ maxHeight: "min(60vh, 560px)" }}
                 className="absolute bottom-full right-0 mb-4 z-50 w-[340px] max-w-[calc(100vw-32px)] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
@@ -660,9 +662,11 @@ const PlaylistPanel = React.memo(({
                     {/* iOS 18 Style Header */}
                     <div className="px-5 pt-5 pb-3 shrink-0 flex items-center justify-between bg-transparent border-b border-white/5">
                         <div className="flex flex-col">
-                            <h3 className="text-white text-lg font-bold leading-none tracking-tight">{dict.list.playingNext}</h3>
+                            <h3 className="text-white text-lg font-bold leading-none tracking-tight">{dict.list.playlist}</h3>
                             <span className="text-white/40 text-xs font-medium mt-1">
-                                {dict.list.songs(queue.length)}
+                                {shuffled
+                                    ? `${dict.list.songs(queue.length)} · ${dict.list.shuffleOn}`
+                                    : dict.list.songs(queue.length)}
                             </span>
                         </div>
 
