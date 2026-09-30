@@ -15,13 +15,14 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
     <div className="glass-dialog-body">
       <div className="w-16 h-16 rounded-[18px] overflow-hidden mb-5 shadow-lg"><AuraLogo className="w-full h-full" /></div>
       <h2>Aura Music</h2>
-      <p className="glass-caption mt-1">Version {manifest.version}</p>
+      <p className="glass-caption mt-1">Version {manifest.version} • Web</p>
       <p className="glass-description mt-5">{dict.about.descStart}<strong> {dict.about.descEmphasis} </strong>{dict.about.descEnd}</p>
       <div className="glass-links mt-5">
-        <a href="https://github.com/dingyi222666/aura-music" target="_blank" rel="noreferrer">{dict.about.viewGitHub}</a>
-        <a href="https://github.com/dingyi222666" target="_blank" rel="noreferrer">{dict.about.createdBy}</a>
+        <a href="https://github.com/azzlantern/aura-music/" target="_blank" rel="noreferrer">{dict.about.viewGitHub}</a>
+        <a href="https://github.com/azzlantern" target="_blank" rel="noreferrer">{dict.about.createdBy}</a>
+        <a href="https://github.com/dingyi222666" target="_blank" rel="noreferrer">{dict.about.originalBy}</a>
       </div>
-      <p className="glass-caption mt-5 text-xs">Gemini 3.5 Flash / GPT 6 Astra / Claude Fable 5.1</p>
+      <p className="glass-caption mt-5 text-xs">Gemini 3.5 Flash / GPT 6 Astra / Claude Fable 5.1 / DeepSeek V4.1</p>
     </div>
     <div className="glass-dialog-actions"><button className="glass-button glass-primary" onClick={onClose}>{dict.about.done}</button></div>
   </GlassDialog>;

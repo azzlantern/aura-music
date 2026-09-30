@@ -22,6 +22,7 @@ interface Dict {
     descEnd: string;
     viewGitHub: string;
     createdBy: string;
+    originalBy: string;
     done: string;
   };
   top: {
@@ -154,7 +155,8 @@ export const dicts: Record<Lang, Dict> = {
       descEmphasis: "Vibe Coding",
       descEnd: "technology.",
       viewGitHub: "View on GitHub",
-      createdBy: "Created by dingyi222666",
+      createdBy: "Created by Mukutobi233",
+      originalBy: "Original by dingyi222666",
       done: "Done",
     },
     top: {
@@ -291,7 +293,8 @@ export const dicts: Record<Lang, Dict> = {
       descEmphasis: "Vibe Coding",
       descEnd: "打造的实验性纯网页音乐播放器。",
       viewGitHub: "在 GitHub 上查看",
-      createdBy: "由 dingyi222666 创建",
+      createdBy: "由 Mukutobi233 创建",
+      originalBy: "原版由 dingyi222666 创作",
       done: "完成",
     },
     top: {
