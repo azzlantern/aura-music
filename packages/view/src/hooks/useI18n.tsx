@@ -99,7 +99,7 @@ interface Dict {
     drag: string;
     reorder: (title: string) => string;
     refresh: string;
-    refreshed: (count: number) => string;
+    synced: (added: number, removed: number) => string;
     upToDate: string;
   };
   search: {
@@ -228,7 +228,12 @@ export const dicts: Record<Lang, Dict> = {
       drag: "Drag to reorder",
       reorder: (title) => `Reorder ${title}`,
       refresh: "Refresh playlist",
-      refreshed: (count) => `Refreshed: ${count} new songs`,
+      synced: (added, removed) => {
+        const parts: string[] = [];
+        if (added > 0) parts.push(`${added} added`);
+        if (removed > 0) parts.push(`${removed} removed`);
+        return `Playlist updated: ${parts.join(", ")}`;
+      },
       upToDate: "Playlist is up to date",
     },
     search: {
@@ -356,7 +361,12 @@ export const dicts: Record<Lang, Dict> = {
       drag: "拖动以重新排序",
       reorder: (title) => `重新排序 ${title}`,
       refresh: "刷新歌单",
-      refreshed: (count) => `已刷新歌单，新增 ${count} 首歌曲`,
+      synced: (added, removed) => {
+        const parts: string[] = [];
+        if (added > 0) parts.push(`新增 ${added} 首`);
+        if (removed > 0) parts.push(`移除 ${removed} 首`);
+        return `歌单已更新：${parts.join("，")}`;
+      },
       upToDate: "歌单已是最新",
     },
     search: {

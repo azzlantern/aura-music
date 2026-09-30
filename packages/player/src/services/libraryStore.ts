@@ -7,6 +7,7 @@ const META = "meta";
 const FILES = "files";
 const SNAP = "playlist";
 const PLAYBACK = "aura:playback";
+const SOURCE = "aura:playlist-source";
 
 const MODES = [PlayMode.LOOP_ALL, PlayMode.LOOP_ONE, PlayMode.SHUFFLE];
 
@@ -363,4 +364,51 @@ export const savePlaybackSnapshot = (snap: PlaybackSnapshot) => {
   }
 
   window.localStorage.setItem(PLAYBACK, JSON.stringify(snap));
+};
+
+/** The playlist the queue follows, plus the track ids it held on the last sync. */
+export interface PlaylistSource {
+  url: string;
+  ids: string[];
+}
+
+export const parsePlaylistSource = (raw: string | null): PlaylistSource | null => {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const value = JSON.parse(raw) as Partial<PlaylistSource> | null;
+    if (!value || typeof value.url !== "string" || !value.url.trim()) {
+      return null;
+    }
+    if (!Array.isArray(value.ids)) {
+      return null;
+    }
+
+    return {
+      url: value.url,
+      ids: value.ids.filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      ),
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const loadPlaylistSource = (): PlaylistSource | null => {
+  if (!hasWindow() || !("localStorage" in window)) {
+    return null;
+  }
+
+  return parsePlaylistSource(window.localStorage.getItem(SOURCE));
+};
+
+export const savePlaylistSource = (source: PlaylistSource) => {
+  if (!hasWindow() || !("localStorage" in window)) {
+    return;
+  }
+
+  window.localStorage.setItem(SOURCE, JSON.stringify(source));
 };

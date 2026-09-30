@@ -5,10 +5,13 @@ import {
   deleteLocalFiles,
   hydrateLibrarySnapshot,
   loadLibrarySnapshot,
+  loadPlaylistSource,
   revokeLocalUrls,
   saveLibrarySnapshot,
   saveLocalFiles,
+  savePlaylistSource,
 } from "./services/libraryStore";
+import { deriveOwned, diffPlaylist } from "./services/playlistSync";
 import {
   extractColors,
   parseAudioMetadata,
@@ -19,6 +22,7 @@ import {
   fetchNeteasePlaylist,
   fetchNeteaseSong,
   getNeteaseAudioUrl,
+  type NeteaseTrackInfo,
 } from "./services/lyricsService";
 import { audioResourceCache } from "@aura-music/core/cache";
 
@@ -55,6 +59,19 @@ const calculateSimilarity = (str1: string, str2: string): number => {
   const maxLen = Math.max(str1.length, str2.length);
   if (maxLen === 0) return 1;
   return 1 - distance / maxLen;
+};
+
+const toSong = (track: NeteaseTrackInfo): Song => {
+  const origin = getNeteaseAudioUrl(track.id);
+  return {
+    ...track,
+    fileUrl: origin,
+    source: "remote",
+    origin,
+    lyrics: [],
+    colors: [],
+    needsLyricsMatch: true,
+  };
 };
 
 export interface ImportResult {
@@ -390,31 +407,13 @@ export const usePlaylist = (messages: PlaylistOptions = {
           setImportingCount(0);
           const songs = await fetchNeteasePlaylist(parsed.id, setImportingCount);
           setImportingCount(0);
-          songs.forEach((song) => {
-            const origin = getNeteaseAudioUrl(song.id);
-            newSongs.push({
-              ...song,
-              fileUrl: origin,
-              source: "remote",
-              origin,
-              lyrics: [],
-              colors: [],
-              needsLyricsMatch: true,
-            });
-          });
+          songs.forEach((song) => newSongs.push(toSong(song)));
+          // Remember what this playlist owns so a later sync knows what it may drop.
+          savePlaylistSource({ url: input, ids: songs.map((song) => song.id) });
         } else {
           const song = await fetchNeteaseSong(parsed.id);
           if (song) {
-            const origin = getNeteaseAudioUrl(song.id);
-            newSongs.push({
-              ...song,
-              fileUrl: origin,
-              source: "remote",
-              origin,
-              lyrics: [],
-              colors: [],
-              needsLyricsMatch: true,
-            });
+            newSongs.push(toSong(song));
           }
         }
       } catch (err) {
@@ -442,47 +441,45 @@ export const usePlaylist = (messages: PlaylistOptions = {
   );
 
   const refreshFromUrl = useCallback(
-    async (url?: string): Promise<{ added: number; total: number }> => {
-      const target = url ?? lastImportUrlRef.current ?? messages.defaultUrl;
-      if (!target) return { added: 0, total: 0 };
+    async (url?: string): Promise<{ added: number; removed: number; total: number }> => {
+      const stored = loadPlaylistSource();
+      const target = url ?? lastImportUrlRef.current ?? stored?.url ?? messages.defaultUrl;
+      if (!target) return { added: 0, removed: 0, total: 0 };
 
       const parsed = parseNeteaseLink(target);
-      if (!parsed || parsed.type !== "playlist") return { added: 0, total: 0 };
-
-      const existing = new Set(
-        queue.filter((song) => song.neteaseId).map((song) => song.neteaseId),
-      );
+      if (!parsed || parsed.type !== "playlist") return { added: 0, removed: 0, total: 0 };
 
       setImportingCount(0);
       try {
         const tracks = await fetchNeteasePlaylist(parsed.id, setImportingCount);
         setImportingCount(0);
+        if (tracks.length === 0) return { added: 0, removed: 0, total: 0 };
 
-        const fresh = tracks.filter((track) => !existing.has(track.id));
-        if (fresh.length === 0) return { added: 0, total: tracks.length };
+        const ids = tracks.map((track) => track.id);
+        // Only songs this playlist owned last time may be dropped, so a single
+        // imported from a song link survives. A restored queue has no record
+        // yet, so fall back to guessing from how much of it is still there.
+        const owned =
+          stored && stored.url === target ? stored.ids : deriveOwned(queue, ids);
+        const diff = diffPlaylist(queue, ids, owned);
+        const fresh = new Set(diff.add);
 
-        appendSongs(
-          fresh.map((song) => {
-            const origin = getNeteaseAudioUrl(song.id);
-            return {
-              ...song,
-              fileUrl: origin,
-              source: "remote" as const,
-              origin,
-              lyrics: [],
-              colors: [],
-              needsLyricsMatch: true,
-            };
-          }),
-        );
-        return { added: fresh.length, total: tracks.length };
+        if (diff.add.length > 0) {
+          appendSongs(tracks.filter((track) => fresh.has(track.id)).map(toSong));
+        }
+        if (diff.remove.length > 0) {
+          removeSongs(diff.remove);
+        }
+
+        savePlaylistSource({ url: target, ids });
+        return { added: diff.add.length, removed: diff.remove.length, total: tracks.length };
       } catch (err) {
         setImportingCount(0);
         console.error("Failed to refresh playlist", err);
-        return { added: 0, total: 0 };
+        return { added: 0, removed: 0, total: 0 };
       }
     },
-    [appendSongs, messages.defaultUrl, queue],
+    [appendSongs, messages.defaultUrl, queue, removeSongs],
   );
 
   return {

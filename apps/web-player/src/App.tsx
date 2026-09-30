@@ -1,6 +1,6 @@
 import AboutDialog from "./AboutDialog";
 import { APP_CONFIG } from "./config";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@aura-music/view/hooks/useToast";
 import { PlayState, Song } from "@aura-music/core/types";
 import FluidBackground from "@aura-music/background/FluidBackground";
@@ -175,23 +175,33 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 自动加载默认歌单 - 只在初始化时加载一次
+  const startupRef = useRef(false);
+
+  // 启动时与来源歌单对齐：空队列直接导入，恢复出来的队列做增量同步
   useEffect(() => {
-    if (!playlist.isReady) return;
+    if (!playlist.isReady || startupRef.current) return;
     if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
-    // 队列已有内容（含从 IndexedDB 恢复的）就不再自动加载
-    if (playlist.queue.length > 0) return;
+    startupRef.current = true;
 
     const timer = setTimeout(async () => {
-      const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
-      if (!result.success || result.songs.length === 0) {
-        console.warn("自动加载歌单失败:", result.message);
+      if (playlist.queue.length === 0) {
+        const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
+        if (!result.success || result.songs.length === 0) {
+          console.warn("自动加载歌单失败:", result.message);
+          return;
+        }
+        toast.success(dict.app.importOk(result.songs.length));
+        if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
+          handlePlaylistAddition(result.songs, true);
+        }
         return;
       }
-      toast.success(dict.app.importOk(result.songs.length));
-      if (APP_CONFIG.DEFAULT_PLAYLIST.AUTO_PLAY) {
-        handlePlaylistAddition(result.songs, true);
-      }
+
+      // 纯本地队列不动；有网易云歌曲就抓一次歌单，补上新增的、移除已被删掉的
+      if (!playlist.queue.some((song) => song.neteaseId)) return;
+      const result = await playlist.refreshFromUrl();
+      if (result.added === 0 && result.removed === 0) return;
+      toast.success(dict.list.synced(result.added, result.removed));
     }, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
 
     return () => clearTimeout(timer);
@@ -199,8 +209,10 @@ const App: React.FC = () => {
     playlist.isReady,
     playlist.queue.length,
     playlist.importFromUrl,
+    playlist.refreshFromUrl,
     toast,
     dict.app,
+    dict.list,
     handlePlaylistAddition,
   ]);
 
@@ -242,12 +254,12 @@ const App: React.FC = () => {
 
   const handleRefresh = useCallback(async () => {
     const result = await playlist.refreshFromUrl();
-    if (result.added > 0) {
-      toast.success(dict.list.refreshed(result.added));
+    if (result.added > 0 || result.removed > 0) {
+      toast.success(dict.list.synced(result.added, result.removed));
       return;
     }
     toast.info(dict.list.upToDate);
-  }, [dict.list.refreshed, dict.list.upToDate, playlist.refreshFromUrl, toast]);
+  }, [dict.list, playlist.refreshFromUrl, toast]);
 
   const handleImportAndPlay = useCallback((song: Song) => {
     // Check if song already exists in queue (by neteaseId for cloud songs, or by id)

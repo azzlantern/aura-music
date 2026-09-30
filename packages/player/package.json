@@ -11,6 +11,7 @@
     "./MediaSessionController": "./src/MediaSessionController.tsx",
     "./services/libraryStore": "./src/services/libraryStore.ts",
     "./services/lyricsService": "./src/services/lyricsService.ts",
+    "./services/playlistSync": "./src/services/playlistSync.ts",
     "./services/utils": "./src/services/utils.ts",
     "./usePlayer": "./src/usePlayer.ts",
     "./usePlaylist": "./src/usePlaylist.ts"
