@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { parsePlaylistSource } from "@aura-music/player/services/libraryStore";
-import { deriveOwned, diffPlaylist } from "@aura-music/player/services/playlistSync";
+import { alignQueue, deriveOwned } from "@aura-music/player/services/playlistSync";
 import { Song } from "@aura-music/core/types";
 
 const song = (
@@ -16,40 +16,78 @@ const song = (
   neteaseId,
 });
 
-test("appending new tracks keeps the playlist order", () => {
-  const queue = [song("1", "1"), song("2", "2")];
+const make = (track: { id: string }): Song => song(track.id, track.id);
+const ids = (queue: Song[]) => queue.map((entry) => entry.id);
 
-  const diff = diffPlaylist(queue, ["1", "3", "2", "4"], ["1", "2"]);
+test("a track the playlist inserted in the middle lands in its playlist slot", () => {
+  const queue = [song("1", "1"), song("2", "2"), song("3", "3")];
 
-  expect(diff.add).toEqual(["3", "4"]);
-  expect(diff.remove).toEqual([]);
+  const aligned = alignQueue(
+    queue,
+    [{ id: "1" }, { id: "9" }, { id: "2" }, { id: "3" }],
+    ["1", "2", "3"],
+    make,
+  );
+
+  expect(ids(aligned.queue)).toEqual(["1", "9", "2", "3"]);
+  expect(aligned.added).toEqual(["9"]);
+  expect(aligned.removed).toEqual([]);
+});
+
+test("an out-of-order queue is rebuilt in playlist order", () => {
+  const queue = [song("3", "3"), song("1", "1"), song("2", "2")];
+
+  const aligned = alignQueue(
+    queue,
+    [{ id: "1" }, { id: "2" }, { id: "3" }],
+    ["1", "2", "3"],
+    make,
+  );
+
+  expect(ids(aligned.queue)).toEqual(["1", "2", "3"]);
+  expect(aligned.added).toEqual([]);
+  expect(aligned.removed).toEqual([]);
 });
 
 test("tracks the playlist no longer holds are dropped", () => {
   const queue = [song("1", "1"), song("2", "2"), song("3", "3")];
 
-  const diff = diffPlaylist(queue, ["1", "3"], ["1", "2", "3"]);
+  const aligned = alignQueue(queue, [{ id: "1" }, { id: "3" }], ["1", "2", "3"], make);
 
-  expect(diff.add).toEqual([]);
-  expect(diff.remove).toEqual(["2"]);
+  expect(ids(aligned.queue)).toEqual(["1", "3"]);
+  expect(aligned.removed).toEqual(["2"]);
 });
 
-test("a netease single imported from a song link is never dropped", () => {
+test("a netease single imported from a song link survives after the playlist", () => {
   const queue = [song("1", "1"), song("99", "99")];
 
-  const diff = diffPlaylist(queue, ["1"], ["1"]);
+  const aligned = alignQueue(queue, [{ id: "1" }], ["1"], make);
 
-  expect(diff.add).toEqual([]);
-  expect(diff.remove).toEqual([]);
+  expect(ids(aligned.queue)).toEqual(["1", "99"]);
+  expect(aligned.removed).toEqual([]);
 });
 
-test("local files survive a sync and never block appends", () => {
-  const queue = [song("local-1", undefined, "local")];
+test("local files survive and keep their order after the playlist", () => {
+  const queue = [
+    song("local-1", undefined, "local"),
+    song("1", "1"),
+    song("local-2", undefined, "local"),
+  ];
 
-  const diff = diffPlaylist(queue, ["1"], ["1"]);
+  const aligned = alignQueue(queue, [{ id: "1" }, { id: "2" }], ["1"], make);
 
-  expect(diff.add).toEqual(["1"]);
-  expect(diff.remove).toEqual([]);
+  expect(ids(aligned.queue)).toEqual(["1", "2", "local-1", "local-2"]);
+  expect(aligned.added).toEqual(["2"]);
+  expect(aligned.removed).toEqual([]);
+});
+
+test("a second copy of a listed track is folded away and reported", () => {
+  const queue = [song("1", "1"), song("1-copy", "1")];
+
+  const aligned = alignQueue(queue, [{ id: "1" }], ["1"], make);
+
+  expect(ids(aligned.queue)).toEqual(["1"]);
+  expect(aligned.removed).toEqual(["1-copy"]);
 });
 
 test("playlist source parsing rejects junk", () => {
@@ -98,10 +136,12 @@ test("the first sync drops leftovers once the queue is recognised", () => {
     song("4", "4"),
     song("5", "5"),
   ];
-  const fresh = ["1", "2", "3", "4", "9"];
+  const fresh = [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }, { id: "9" }];
+  const owned = deriveOwned(queue, fresh.map((track) => track.id));
 
-  const diff = diffPlaylist(queue, fresh, deriveOwned(queue, fresh));
+  const aligned = alignQueue(queue, fresh, owned, make);
 
-  expect(diff.add).toEqual(["9"]);
-  expect(diff.remove).toEqual(["5"]);
+  expect(ids(aligned.queue)).toEqual(["1", "2", "3", "4", "9"]);
+  expect(aligned.added).toEqual(["9"]);
+  expect(aligned.removed).toEqual(["5"]);
 });

@@ -11,7 +11,7 @@ import {
   saveLocalFiles,
   savePlaylistSource,
 } from "./services/libraryStore";
-import { deriveOwned, diffPlaylist } from "./services/playlistSync";
+import { alignQueue, deriveOwned } from "./services/playlistSync";
 import {
   extractColors,
   parseAudioMetadata,
@@ -461,25 +461,30 @@ export const usePlaylist = (messages: PlaylistOptions = {
         // yet, so fall back to guessing from how much of it is still there.
         const owned =
           stored && stored.url === target ? stored.ids : deriveOwned(queue, ids);
-        const diff = diffPlaylist(queue, ids, owned);
-        const fresh = new Set(diff.add);
+        // Rebuild instead of append: a playlist can insert a track in the
+        // middle, and the queue order has to keep matching the playlist.
+        const aligned = alignQueue(queue, tracks, owned, toSong);
+        const same =
+          aligned.queue.length === queue.length &&
+          aligned.queue.every((song, idx) => song.id === queue[idx].id);
 
-        if (diff.add.length > 0) {
-          appendSongs(tracks.filter((track) => fresh.has(track.id)).map(toSong));
-        }
-        if (diff.remove.length > 0) {
-          removeSongs(diff.remove);
+        if (!same) {
+          setQueue(aligned.queue);
         }
 
         savePlaylistSource({ url: target, ids });
-        return { added: diff.add.length, removed: diff.remove.length, total: tracks.length };
+        return {
+          added: aligned.added.length,
+          removed: aligned.removed.length,
+          total: tracks.length,
+        };
       } catch (err) {
         setImportingCount(0);
         console.error("Failed to refresh playlist", err);
         return { added: 0, removed: 0, total: 0 };
       }
     },
-    [appendSongs, messages.defaultUrl, queue, removeSongs],
+    [messages.defaultUrl, queue, setQueue],
   );
 
   return {
