@@ -176,15 +176,25 @@ const App: React.FC = () => {
   }, []);
 
   const startupRef = useRef(false);
+  const queueRef = useRef(playlist.queue);
 
-  // 启动时与来源歌单对齐：空队列直接导入，恢复出来的队列做增量同步
+  useEffect(() => {
+    queueRef.current = playlist.queue;
+  }, [playlist.queue]);
+
+  // 启动时与来源歌单对齐：空队列直接导入，恢复出来的队列做增量同步。
+  // 只依赖 isReady：这是一次性任务，若把 queue.length 之类放进依赖，任意一次
+  // render 抖动都会清掉这个定时器，而 startupRef 已经置位，同步就永远不会跑。
   useEffect(() => {
     if (!playlist.isReady || startupRef.current) return;
     if (!APP_CONFIG.DEFAULT_PLAYLIST.ENABLED) return;
-    startupRef.current = true;
 
     const timer = setTimeout(async () => {
-      if (playlist.queue.length === 0) {
+      if (startupRef.current) return;
+      startupRef.current = true;
+      const queue = queueRef.current;
+
+      if (queue.length === 0) {
         const result = await playlist.importFromUrl(APP_CONFIG.DEFAULT_PLAYLIST.URL);
         if (!result.success || result.songs.length === 0) {
           console.warn("自动加载歌单失败:", result.message);
@@ -197,24 +207,20 @@ const App: React.FC = () => {
         return;
       }
 
-      // 纯本地队列不动；有网易云歌曲就抓一次歌单，补上新增的、移除已被删掉的
-      if (!playlist.queue.some((song) => song.neteaseId)) return;
+      // 纯本地队列不动；有网易云歌曲就抓一次歌单，补上的、移除的、顺序都一起对齐
+      if (!queue.some((song) => song.neteaseId)) return;
       const result = await playlist.refreshFromUrl();
+      if (result.failed) {
+        console.warn("启动同步歌单失败，可在歌单面板里手动刷新");
+        return;
+      }
       if (result.added === 0 && result.removed === 0) return;
       toast.success(dict.list.synced(result.added, result.removed));
     }, APP_CONFIG.DEFAULT_PLAYLIST.LOAD_DELAY);
 
     return () => clearTimeout(timer);
-  }, [
-    playlist.isReady,
-    playlist.queue.length,
-    playlist.importFromUrl,
-    playlist.refreshFromUrl,
-    toast,
-    dict.app,
-    dict.list,
-    handlePlaylistAddition,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlist.isReady]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
@@ -254,11 +260,15 @@ const App: React.FC = () => {
 
   const handleRefresh = useCallback(async () => {
     const result = await playlist.refreshFromUrl();
+    if (result.failed) {
+      toast.error(dict.list.syncFailed);
+      return;
+    }
     if (result.added > 0 || result.removed > 0) {
       toast.success(dict.list.synced(result.added, result.removed));
       return;
     }
-    toast.info(dict.list.upToDate);
+    toast.info(result.reordered ? dict.list.aligned : dict.list.upToDate);
   }, [dict.list, playlist.refreshFromUrl, toast]);
 
   const handleImportAndPlay = useCallback((song: Song) => {

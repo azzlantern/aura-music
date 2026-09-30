@@ -447,19 +447,29 @@ export const usePlaylist = (messages: PlaylistOptions = {
   );
 
   const refreshFromUrl = useCallback(
-    async (url?: string): Promise<{ added: number; removed: number; total: number }> => {
+    async (
+      url?: string,
+    ): Promise<{
+      added: number;
+      removed: number;
+      total: number;
+      failed: boolean;
+      reordered: boolean;
+    }> => {
+      const idle = { added: 0, removed: 0, total: 0, failed: false, reordered: false };
       const stored = loadPlaylistSource();
       const target = url ?? lastImportUrlRef.current ?? stored?.url ?? messages.defaultUrl;
-      if (!target) return { added: 0, removed: 0, total: 0 };
+      if (!target) return idle;
 
       const parsed = parseNeteaseLink(target);
-      if (!parsed || parsed.type !== "playlist") return { added: 0, removed: 0, total: 0 };
+      if (!parsed || parsed.type !== "playlist") return idle;
 
       setImportingCount(0);
       try {
         const tracks = await fetchNeteasePlaylist(parsed.id, setImportingCount);
         setImportingCount(0);
-        if (tracks.length === 0) return { added: 0, removed: 0, total: 0 };
+        // An empty answer means the request failed, not that the playlist is empty.
+        if (tracks.length === 0) return { ...idle, failed: true };
 
         const ids = tracks.map((track) => track.id);
         // Only songs this playlist owned last time may be dropped, so a single
@@ -495,11 +505,13 @@ export const usePlaylist = (messages: PlaylistOptions = {
           added: aligned.added.length,
           removed: aligned.removed.length,
           total: tracks.length,
+          failed: false,
+          reordered: !handmade && !same,
         };
       } catch (err) {
         setImportingCount(0);
         console.error("Failed to refresh playlist", err);
-        return { added: 0, removed: 0, total: 0 };
+        return { ...idle, failed: true };
       }
     },
     [messages.defaultUrl, queue, setQueue],

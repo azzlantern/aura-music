@@ -106,6 +106,8 @@ interface Dict {
     refresh: string;
     synced: (added: number, removed: number) => string;
     upToDate: string;
+    aligned: string;
+    syncFailed: string;
   };
   search: {
     online: string;
@@ -245,6 +247,8 @@ export const dicts: Record<Lang, Dict> = {
         return `Playlist updated: ${parts.join(", ")}`;
       },
       upToDate: "Playlist is up to date",
+      aligned: "Queue realigned to the playlist order",
+      syncFailed: "Could not reach the playlist, try again in a moment",
     },
     search: {
       online: "Search online...",
@@ -383,6 +387,8 @@ export const dicts: Record<Lang, Dict> = {
         return `歌单已更新：${parts.join("，")}`;
       },
       upToDate: "歌单已是最新",
+      aligned: "队列已按歌单顺序对齐",
+      syncFailed: "歌单拉取失败，稍后再试",
     },
     search: {
       online: "搜索在线歌曲...",
