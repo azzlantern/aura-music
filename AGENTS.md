@@ -1,286 +1,52 @@
 # Agent Instructions for aura-music
 
-This file defines how agentic tools should work in this repository.
-It applies to the entire tree under the repo root.
+Aura Music v3.0.0: a client-side React 19 + Vite 6 + TypeScript music player (WebGL fluid background, canvas lyric rendering, Netease import/search), also shipped as a Tauri v2 desktop app. There is no app backend in this repo.
 
-- ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
-- Prefer automation: execute requested actions without extra confirmation unless
-  blocked by missing info or safety/irreversibility.
+## Layout
 
-## Repo & Branches
+- Repo root is the app root; `@/*` (Vite alias + tsconfig `paths`) resolves to the repo root.
+- `index.html` → `/index.tsx` → `React.StrictMode > I18nProvider > ToastProvider > App`.
+- `App.tsx` is the composition root: it calls `usePlaylist()` then `usePlayer({ ... })`, owns layout/mobile-swipe state and the theme-color meta, and loads the default playlist from `APP_CONFIG` in `config.ts`.
+- `hooks/`: `usePlaylist` (import/queue/IndexedDB library), `usePlayer` (audio element, speed/pitch, MediaSession, blob caching), `useI18n` (inline `en`/`zh` dictionaries), `useLyricsPhysics` + `useAnimationInterpolator` (spring physics for canvas lyric lines), `useSearchModal`/`useSearchProvider`/`useNeteaseSearchProvider`/`useQueueSearchProvider`, `useKeyboardScope`, `useCanvasRenderer`, `useFitScale`, `useToast`.
+- `components/`: `Controls`, `LyricsView`, `PlaylistPanel`, `SearchModal`, `TopBar`, `KeyboardShortcuts`, `AboutDialog`, `ImportMusicDialog`, `PwaUpdatePrompt`, `MediaSessionController`, `Toast`, `SmartImage`, `Marquee`, `FluidBackground`. `components/lyrics/` holds the canvas line renderers behind the `ILyricLine` interface (`LyricLine`, `InterludeDots`, `flowHeights`); `components/background/` holds the `BaseBackgroundRender` abstraction with UI and OffscreenCanvas worker backends; `components/visualizer/` runs an AudioWorklet plus a worker.
+- `services/`: `lyrics/` parsers (LRC, Netease YRC, TTML via `fast-xml-parser`, translation/romanization merge, format auto-detection in `lyrics/index.ts`); `lyricsService.ts` (Meting / jimsdeng Netease / amll-ttml-db endpoints); `libraryStore.ts` (IndexedDB `aura-music` v1 with `meta` + `files` stores and a `playlist` snapshot, localStorage `aura:playback`); `cache.ts` (in-memory size-limited blob LRU); `utils.ts` (jsmediatags metadata, colorthief palette, CORS-proxy fallback); `keyboardRegistry.ts`; `springSystem.ts` / `spring.ts`; `audioLevelBridge.ts`.
+- `src-tauri/` is the Tauri v2 shell (Rust side is nearly empty; `capabilities/default.json` grants only `core:default`). Keep frontend code working in a plain browser.
+- `dist/` is build output. `App.tsx.bak`, `components/PlaylistPanel.tsx.bak`, and the empty `clean.html` are leftovers — ignore them.
 
-- Frontend-only React + Vite + TypeScript application.
-- Default branch is `main`; use `main` or `origin/main` for diffs.
-- No monorepo structure; everything lives at the repo root.
-- There are currently **no** `.cursor/rules`, `.cursorrules`, or
-  `.github/copilot-instructions.md` files. If they are added later, follow
-  them in addition to this file.
-- Path alias: `@` resolves to the project root (see `tsconfig.json`).
+## Commands
 
-## Tooling & Commands
+- Install: `npm install` (the committed lockfile and every workflow use npm).
+- Dev: `npm run dev` (port 5173, host 0.0.0.0). Build: `npm run build`. Preview: `npm run preview`.
+- Desktop: `npm run desktop:dev` / `npm run desktop:build` (Tauri; needs the Rust toolchain).
+- Tests: `npm test` or `bun test tests`; single file `bun test tests/<file>.test.ts`; name filter `bun test tests --filter "<name>"`.
+- Do not add Jest, Vitest, ESLint, or Prettier unless asked.
 
-### Install
+## Verification
 
-- Use a recent Node.js (>= 18) and Bun installed globally.
-- Install dependencies with one of:
-  - `bun install`
+- Tests use Bun's runner (`bun:test`) and live in `tests/`; `tests/i18n.test.ts` and `tests/library_store.test.ts` are the existing patterns.
+- Run `bun test tests` before finishing non-trivial changes. Coverage is limited to pure exports (parsers, snapshot/migration helpers, dictionaries); canvas, worker, and network paths have no automated coverage, so exercise those in the browser.
+- Test modules run without a DOM, so keep module-level browser access behind `typeof window` guards (see `hasWindow` in `services/libraryStore.ts`) or the import throws under `bun test`.
+- `tests/*` is listed in `.gitignore` even though the existing tests are tracked; a new test file needs `git add -f tests/<new>.test.ts`.
 
-### Dev server
+## Style
 
-- Start the React dev server (Vite):
-  - `bun run dev`
+- ES modules, 2-space indentation, semicolons, double quotes, trailing commas where practical.
+- Prefer `const`, early returns, and dot notation over unnecessary destructuring or `else` chains; keep new local names short and single-word when clear.
+- Keep React changes aligned with the hook-driven structure in `App.tsx` and `components/*`; keep heavy rendering in the canvas/worker paths instead of React state.
 
-### Build & preview
+## Repo-Specific Gotchas
 
-- Production build:
-  - `bun run build`
-- Preview a production build locally:
-  - `bun run preview`
+- `vite.config.ts` derives `base` from `mode` (`"./"` for production, `"/"` otherwise) and ignores `VITE_BASE_PATH`, so the Cloudflare workflow's `VITE_BASE_PATH="/"` is currently a no-op. Change the config if a real sub-path base is needed.
+- `vite.config.ts` still defines `process.env.API_KEY` / `process.env.GEMINI_API_KEY` from `GEMINI_API_KEY`, but no source file reads them and `metadata.json`'s "Gemini-powered analysis" is stale. Never hard-code secrets.
+- Tailwind is loaded from the CDN `<script>` in `index.html` — no Tailwind config or build step, so only CDN-available classes apply. Do not introduce a Tailwind toolchain unasked.
+- `index.html` also loads jsmediatags and color-thief from CDNs while `services/utils.ts` imports the npm packages; the bundled imports are the source of truth.
+- Unusual imports need declarations in `env.d.ts` (already: `*?worker&url` and the jsmediatags deep path). Background worker: `components/background/renderer/webWorkerBackground.worker.ts` via `?worker&url`; the visualizer uses `new Worker(new URL("./VisualizerWorker.ts", import.meta.url), { type: "module" })`.
+- Background rendering has two interchangeable backends (`UIBackgroundRender`, `WebWorkerBackgroundRender`); a visual change must land in both, and the worker path silently falls back when `OffscreenCanvas` / `transferControlToOffscreen` is unavailable.
+- Browser-side Netease/Meting requests try direct fetch first and fall back to the `api.allorigins.win` proxy (`fetchViaProxy` in `services/utils.ts`); upstream failures surface as "lyrics not found" or import errors rather than obvious network errors.
+- PWA: `registerType: "prompt"` with `PwaUpdatePrompt`; workbox globs js/css/html/svg/png/webp/woff2 and navigates to `index.html`. The 4.9 MB `src/assets/fonts/Roboto-Regular.woff2` is why `maximumFileSizeToCacheInBytes` is 5 MB — a larger font needs a larger limit. The `@font-face` also lists a `.ttf` that is not in the repo.
+- Deploys run on `main`: `.github/workflows/deploy.yml` (`npm install` → build → publish `dist` to `gh-pages`) and `.github/workflows/deploy-cloudflare.yml` (`npm ci || npm install`, build, Cloudflare Pages project `auramusic` via `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`).
+- The default playlist is `APP_CONFIG.DEFAULT_PLAYLIST` in `config.ts`; the in-app import dialog is the path that needs no redeploy.
 
-### Tests (Bun)
+## What to Keep in Mind
 
-Tests live under `tests/` and use `bun:test` (`import { test, expect } from "bun:test"`).
-
-- Run the full test suite from the repo root:
-  - `bun test tests`
-  - or via npm script: `npm test` (which runs `bun test tests`).
-- Run a single test file (preferred pattern for agents):
-  - `bun test tests/yrc.test.ts`
-  - `bun test tests/enhance_lrc.test.ts`
-- Run tests matching a name pattern (example; see `bun test --help` for details):
-  - `bun test tests --filter "YRC enrichment"`
-  - Use the full or partial test description string from the `test("...")` call.
-- Avoid introducing other test runners (Jest, Vitest, etc.) unless explicitly
-  requested; keep tests on Bun.
-
-### Linting & formatting commands
-
-- There is currently **no** ESLint or Prettier configuration in this repo.
-- Do **not** add new linters/formatters or config files without an explicit
-  request from the user.
-- Rely on TypeScript and the existing code style as the primary source of
-  truth for correctness and style.
-
-## Testing Guidelines
-
-- New tests should be placed under `tests/` and use Bun's test API:
-  - `import { test, expect } from "bun:test";`
-- Prefer focused, integration-style tests over heavy mocking.
-  - Example: use real lyrics parsing through `parseLyrics` rather than
-    re-implementing its logic inside tests.
-- Reuse the existing patterns in files like `tests/yrc.test.ts` and
-  `tests/enhance_lrc.test.ts` for naming, structure, and expectations.
-- Test data lives in `tests/resources/`; prefer adding new fixtures there
-  instead of inlining very large strings directly in tests.
-- When debugging or narrowing failures, run only the relevant test file or
-  filtered tests as described above.
-
-## General TypeScript Style
-
-- Use modern ES modules with TypeScript (`.ts` / `.tsx`).
-- Keep related logic in a single function unless splitting clearly improves
-  reuse or readability.
-- Prefer `const` over `let` and avoid `var`.
-- Prefer early returns over deep nesting and `else` chains.
-- Avoid `any` where possible; if you must use it (for interop with
-  third-party globals like `jsmediatags` or `ColorThief`), keep the `any` as
-  localized as possible.
-- Use interfaces/types for exported shapes, especially in shared files like
-  `types.ts` and `services/lyrics/types.ts`.
-- Use TypeScript's type inference where it keeps the code clear; avoid
-  redundant type annotations for obvious local variables.
-- Prefer functional array methods (`map`, `filter`, `flatMap`, `reduce`) over
-  manual loops; use type guards in `filter` to preserve downstream
-  type inference.
-- Avoid unnecessary destructuring; prefer dot notation when it keeps context
-  clearer (see examples below).
-
-## Imports
-
-- Use ESM import syntax at the top of the file.
-- Group imports roughly in this order:
-  1. Node/built-in modules (`node:path`, `node:fs`, etc.).
-  2. Third-party packages (`react`, `@react-spring/web`, `@google/genai`).
-  3. Absolute project imports via `@/...`.
-  4. Relative imports (`../services/...`, `./components/...`).
-- Keep React imports explicit when needed (e.g. `import React, { useState } from "react";`).
-- For deep cross-tree imports, prefer the `@` alias over long `../../..`
-  chains where it improves clarity.
-
-## React Components & Hooks
-
-- Use function components (`const Component: React.FC<Props> = (...) => { ... }`).
-- Define props with an `interface` or `type` near the top of the file.
-- Use hooks for state and side effects as in `App.tsx` and `LyricsView.tsx`.
-- Keep components focused; pull out complex behavior into hooks under
-  `hooks/` or utilities under `services/` when it improves reuse.
-- Prefer controlled components and prop-driven behavior over global state
-  where possible.
-- For UI styling, this project uses Tailwind-style utility class strings
-  directly in `className` (e.g. `"h-[85vh] flex"`); follow the existing
-  patterns when editing or adding UI.
-
-## Naming Conventions
-
-- Use PascalCase for React components, types, and enums (`LyricsView`,
-  `PlayState`).
-- Use camelCase for variables, functions, hooks, and non-component exports.
-- Hooks should start with `use` (`useLyricsPhysics`, `usePlaylist`).
-- Files containing React components should use PascalCase names ending in
-  `.tsx` (e.g. `LyricsView.tsx`).
-- For new TypeScript **locals, parameters, and small helpers**, prefer single
-  word names when they stay clear.
-  - Multi-word names are fine when a single word would be confusing
-    (`activeIndex`, `matchStatus`, `currentTime`).
-- Before finishing edits, quickly scan new names and shorten them if a clear
-  single-word alternative exists.
-
-### Naming Enforcement (Read This)
-
-THIS RULE IS MANDATORY FOR AGENT-WRITTEN CODE.
-
-- Use single word names by default for new locals, params, and helper
-  functions.
-- Multi-word names are allowed only when a single word would be unclear or
-  ambiguous.
-- Do not introduce new camelCase compounds when a short single-word
-  alternative is clear.
-- Before finishing edits, review touched lines and shorten newly introduced
-  identifiers where possible.
-- Good short names to prefer: `pid`, `cfg`, `err`, `opts`, `dir`, `root`,
-  `child`, `state`, `timeout`.
-- Examples to avoid unless truly required: `inputPID`, `existingClient`,
-  `connectTimeout`, `workerPath`.
-
-```ts
-// Good
-const foo = 1;
-function journal(dir: string) {}
-
-// Bad
-const fooBar = 1;
-function prepareJournal(dir: string) {}
-```
-
-Reduce total variable count by inlining when a value is only used once.
-
-```ts
-// Good
-const fullName = `${user.firstName} ${user.lastName}`;
-
-// Bad
-const first = user.firstName;
-const last = user.lastName;
-const fullName = `${first} ${last}`;
-```
-
-### Destructuring
-
-Avoid unnecessary destructuring. Use dot notation to preserve context.
-
-```ts
-// Good
-user.profile.name;
-user.profile.avatarUrl;
-
-// Bad
-const { name, avatarUrl } = user.profile;
-```
-
-### Variables
-
-Prefer `const` over `let`. Use ternaries or early returns instead of
-reassignment.
-
-```ts
-// Good
-const value = condition ? 1 : 2;
-
-// Bad
-let value;
-if (condition) value = 1;
-else value = 2;
-```
-
-### Control Flow
-
-Avoid `else` statements when a simple early return works.
-
-```ts
-// Good
-function foo(condition: boolean) {
-  if (condition) return 1;
-  return 2;
-}
-
-// Bad
-function foo(condition: boolean) {
-  if (condition) return 1;
-  else return 2;
-}
-```
-
-### Schema Definitions (Drizzle)
-
-If you add Drizzle ORM schema definitions in the future, use `snake_case` for
-field names so column names don't need to be redefined as strings.
-
-```ts
-// Good
-const table = sqliteTable("session", {
-  id: text().primaryKey(),
-  project_id: text().notNull(),
-  created_at: integer().notNull(),
-});
-
-// Bad
-const table = sqliteTable("session", {
-  id: text("id").primaryKey(),
-  projectID: text("project_id").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
-```
-
-## Error Handling
-
-- For network and I/O helpers (for example in `services/utils.ts`):
-  - Use `try`/`catch` around external calls (`fetch`, `jsmediatags.read`,
-    `ColorThief`) and log via `console.warn` or `console.error`.
-  - Return safe fallbacks (`[]`, `{}`, `null`) when the UI can recover.
-- Avoid swallowing errors silently; either log them or let them propagate to
-  the caller where they can be handled.
-- Do not introduce global error handlers or error boundaries without checking
-  with the user; keep behavior consistent with the current app.
-
-## Formatting
-
-- Use 2-space indentation for new or heavily edited code.
-- Use double quotes (`""`) for strings in TypeScript and JSX; the existing
-  codebase mixes quotes, but move toward double quotes when you touch a line.
-- Always terminate statements with semicolons.
-- Prefer trailing commas in multi-line object/array literals where supported.
-- Keep lines to a reasonable length; break up long expressions or JSX props
-  instead of letting lines grow excessively wide.
-- Keep JSX easy to scan: one prop per line for complex components, and
-  nested conditional rendering kept simple.
-
-## Vite, Env, and Paths
-
-- Vite config lives in `vite.config.ts` and uses `loadEnv` to inject
-  environment variables.
-- The `GEMINI_API_KEY` is read from env and exposed via `process.env.*` in
-  the client bundle; **never** hard-code secrets in the repo.
-- When adding new env variables, wire them through Vite's `loadEnv` and
-  document them in this file or in README.
-- Use the `@` alias if it improves readability, e.g. `@/services/lyrics`.
-
-## Agent-Specific Tips
-
-- Prefer making small, focused changes that match existing patterns in the
-  surrounding code.
-- When adding features, update or add Bun tests under `tests/` instead of
-  creating new test directories or runners.
-- Do not introduce backend code or separate servers unless explicitly asked;
-  this project is a client-side React app.
-- When in doubt about style, look at `App.tsx`, `components/LyricsView.tsx`,
-  and `services/utils.ts` and match their patterns.
+- Use the README for deployment and local-run notes only where it matches `package.json` and the workflow files; when docs conflict with scripts or workflows, trust the executable source.
