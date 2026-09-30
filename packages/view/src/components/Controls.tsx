@@ -418,7 +418,7 @@ const Controls: React.FC<ControlsProps> = ({
     >
       <div
         ref={fitRef}
-        className="w-full flex flex-col items-center justify-center text-white select-none p-4 sm:p-6 font-sans origin-top"
+        className="w-full flex flex-col items-center justify-center text-white select-none p-4 sm:p-6 origin-top"
         style={{
           transform: fitScale < 1 ? `scale(${fitScale})` : undefined,
           transformOrigin: "top center",

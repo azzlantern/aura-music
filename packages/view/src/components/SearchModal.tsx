@@ -275,7 +275,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans"
+      className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
         if (!modalRef.current?.contains(target)) {
