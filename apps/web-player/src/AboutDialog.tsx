@@ -22,7 +22,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
         <a href="https://github.com/azzlantern" target="_blank" rel="noreferrer">{dict.about.createdBy}</a>
         <a href="https://github.com/dingyi222666" target="_blank" rel="noreferrer">{dict.about.originalBy}</a>
       </div>
-      <p className="glass-caption mt-5 text-xs">Gemini 3.5 Flash / GPT 6 Astra / Claude Fable 5.1 / DeepSeek V4.1</p>
+      <p className="glass-caption mt-5 text-xs">Gemini 3.5 Flash / GPT 6 Astra / Claude Fable 5.1 / DeepSeek V4.1 Flash</p>
     </div>
     <div className="glass-dialog-actions"><button className="glass-button glass-primary" onClick={onClose}>{dict.about.done}</button></div>
   </GlassDialog>;
