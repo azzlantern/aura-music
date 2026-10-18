@@ -53,7 +53,7 @@ npx wrangler pages deploy ./apps/web-player/dist --project-name auramusic --bran
 export const APP_CONFIG = {
   DEFAULT_PLAYLIST: {
     ENABLED: true,
-    URL: "https://music.163.com/playlist?id=17473221422",
+    URL: "https://music.163.com/playlist?id=2803167371",
     AUTO_PLAY: false,
     LOAD_DELAY: 500,
   },
