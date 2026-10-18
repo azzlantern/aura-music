@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { parsePlaylistSource } from "@aura-music/player/services/libraryStore";
-import { alignQueue, deriveOwned } from "@aura-music/player/services/playlistSync";
+import {
+  alignQueue,
+  deriveOwned,
+  shouldAdopt,
+} from "@aura-music/player/services/playlistSync";
 import { Song } from "@aura-music/core/types";
 
 const song = (
@@ -18,6 +22,32 @@ const song = (
 
 const make = (track: { id: string }): Song => song(track.id, track.id);
 const ids = (queue: Song[]) => queue.map((entry) => entry.id);
+
+const OLD = "https://music.163.com/playlist?id=17473221422";
+const NEW = "https://music.163.com/playlist?id=2803167371";
+const source = (url: string) => ({ url, ids: [] });
+
+test("an empty record adopts the configured default", () => {
+  expect(shouldAdopt(null, NEW, [OLD])).toBe(true);
+});
+
+test("a record on a previous default follows the new default", () => {
+  expect(shouldAdopt(source(OLD), NEW, [OLD])).toBe(true);
+});
+
+test("a previous default is matched through the hash-router form too", () => {
+  const hash = "https://music.163.com/#/playlist?id=17473221422";
+  expect(shouldAdopt(source(hash), NEW, [OLD])).toBe(true);
+});
+
+test("a record already on the new default adopts it", () => {
+  expect(shouldAdopt(source(NEW), NEW, [OLD])).toBe(true);
+});
+
+test("a playlist imported by hand is left alone", () => {
+  const mine = "https://music.163.com/playlist?id=777";
+  expect(shouldAdopt(source(mine), NEW, [OLD])).toBe(false);
+});
 
 test("a track the playlist inserted in the middle lands in its playlist slot", () => {
   const queue = [song("1", "1"), song("2", "2"), song("3", "3")];

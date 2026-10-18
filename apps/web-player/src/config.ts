@@ -5,7 +5,9 @@ export const APP_CONFIG = {
     // 是否启用自动加载默认歌单
     ENABLED: true,
     // 默认歌单URL或ID
-    URL: "https://music.163.com/playlist?id=17473221422",
+    URL: "https://music.163.com/playlist?id=2803167371",
+    // 以前的默认歌单：存储来源还指着这些时，跟随上面的新默认歌单
+    LEGACY_URLS: ["https://music.163.com/playlist?id=17473221422"],
     // 是否自动播放第一首歌
     AUTO_PLAY: false,
     // 加载延迟时间（毫秒）

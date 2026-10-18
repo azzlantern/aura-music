@@ -53,7 +53,8 @@ npx wrangler pages deploy ./apps/web-player/dist --project-name auramusic --bran
 export const APP_CONFIG = {
   DEFAULT_PLAYLIST: {
     ENABLED: true,
-    URL: "https://music.163.com/playlist?id=17473221422",
+    URL: "https://music.163.com/playlist?id=2803167371",
+    LEGACY_URLS: ["https://music.163.com/playlist?id=17473221422"],
     AUTO_PLAY: false,
     LOAD_DELAY: 500,
   },
@@ -63,6 +64,7 @@ export const APP_CONFIG = {
 - 启动时：队列为空则导入该歌单；队列里已有网易云歌曲则与歌单同步一次（补新增、移除歌单已删掉的、并把顺序对齐歌单）。
 - 面板里也可以直接粘贴歌单 **ID** 或完整链接导入。
 - 手动拖动过的顺序会被记住，直到歌单本身真的增删歌曲为止。
+- 换掉 `URL` 时把旧地址填进 `LEGACY_URLS`：存储来源还指着旧默认歌单的浏览器会跟着切过去；自己手动导入过的歌单不受影响。
 
 ## 部署常见问题（黑屏/空白页）
 

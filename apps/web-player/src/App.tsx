@@ -209,7 +209,10 @@ const App: React.FC = () => {
 
       // 纯本地队列不动；有网易云歌曲就抓一次歌单，补上的、移除的、顺序都一起对齐
       if (!queue.some((song) => song.neteaseId)) return;
-      const result = await playlist.refreshFromUrl();
+      const result = await playlist.refreshFromUrl(
+        APP_CONFIG.DEFAULT_PLAYLIST.URL,
+        { legacy: APP_CONFIG.DEFAULT_PLAYLIST.LEGACY_URLS },
+      );
       if (result.failed) {
         console.warn("启动同步歌单失败，可在歌单面板里手动刷新");
         return;

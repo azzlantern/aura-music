@@ -11,7 +11,7 @@ import {
   saveLocalFiles,
   savePlaylistSource,
 } from "./services/libraryStore";
-import { alignQueue, deriveOwned } from "./services/playlistSync";
+import { alignQueue, deriveOwned, shouldAdopt } from "./services/playlistSync";
 import {
   extractColors,
   parseAudioMetadata,
@@ -449,6 +449,7 @@ export const usePlaylist = (messages: PlaylistOptions = {
   const refreshFromUrl = useCallback(
     async (
       url?: string,
+      opts?: { legacy?: readonly string[] },
     ): Promise<{
       added: number;
       removed: number;
@@ -458,7 +459,11 @@ export const usePlaylist = (messages: PlaylistOptions = {
     }> => {
       const idle = { added: 0, removed: 0, total: 0, failed: false, reordered: false };
       const stored = loadPlaylistSource();
-      const target = url ?? lastImportUrlRef.current ?? stored?.url ?? messages.defaultUrl;
+      const fallback =
+        lastImportUrlRef.current ?? stored?.url ?? messages.defaultUrl;
+      // A default handed in by the app wins only when nothing was picked by hand.
+      const target =
+        url && shouldAdopt(stored, url, opts?.legacy ?? []) ? url : fallback;
       if (!target) return idle;
 
       const parsed = parseNeteaseLink(target);
@@ -475,8 +480,13 @@ export const usePlaylist = (messages: PlaylistOptions = {
         // Only songs this playlist owned last time may be dropped, so a single
         // imported from a song link survives. A restored queue has no record
         // yet, so fall back to guessing from how much of it is still there.
+        // A source handed in by the app is what this sync switches to, so the
+        // songs the old source contributed are the ones it may drop.
+        const handed = url !== undefined && target === url;
         const owned =
-          stored && stored.url === target ? stored.ids : deriveOwned(queue, ids);
+          stored && (handed || stored.url === target)
+            ? stored.ids
+            : deriveOwned(queue, ids);
         // Rebuild instead of append: a playlist can insert a track in the
         // middle, and the queue order has to keep matching the playlist.
         const aligned = alignQueue(queue, tracks, owned, toSong);

@@ -1,4 +1,6 @@
 import { Song } from "@aura-music/core/types";
+import type { PlaylistSource } from "./libraryStore";
+import { parseNeteaseLink } from "./utils";
 
 export interface QueueAlignment {
   /** The queue rebuilt in playlist order. */
@@ -12,6 +14,31 @@ export interface QueueAlignment {
 /** How much of an untracked queue must still be in the playlist before the
  *  queue is treated as this playlist's previous state. */
 const OVERLAP = 0.8;
+
+/** Whether two links point at the same playlist, hash-router form included. */
+export const samePlaylist = (left: string, right: string): boolean => {
+  const one = parseNeteaseLink(left);
+  const two = parseNeteaseLink(right);
+  return one !== null && two !== null && one.id === two.id;
+};
+
+/**
+ * Whether a configured default may replace the stored source.
+ *
+ * A playlist the user imported by hand is left alone: only a missing record, one
+ * already pointing at the new default, or one on a previous default follows it.
+ */
+export const shouldAdopt = (
+  stored: PlaylistSource | null,
+  next: string,
+  legacy: readonly string[],
+): boolean => {
+  if (!stored?.url) return true;
+  return (
+    samePlaylist(stored.url, next) ||
+    legacy.some((url) => samePlaylist(stored.url, url))
+  );
+};
 
 /**
  * Guess what an untracked queue owned.
